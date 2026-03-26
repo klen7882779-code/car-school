@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>第一汽車駕訓班 — 名額查詢系統</title>
+<title>第一汽車駕訓班 — 名額查詢</title>
 <style>
   :root { --p:#1A1916; --acc:#27ae60; --bg:#F4F3EF; --c:#FFF; --b:#E0DDD5; }
   body { font-family:sans-serif; background:var(--bg); margin:0; padding:0; color:#333; }
@@ -12,14 +12,14 @@
   .pill.active { background:var(--p); color:#fff; border-color:var(--p); }
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px; padding:15px; max-width:1100px; margin:auto; }
   .card { background:var(--c); border:1px solid var(--b); border-radius:12px; padding:15px; border-top:5px solid var(--acc); }
-  .coach-t { font-size:16px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; }
+  .coach-t { font-size:17px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; }
   .slot { background:#f9f9f9; padding:10px; border-radius:8px; margin-bottom:8px; }
   .slot-time { font-size:11px; font-weight:bold; color:#666; margin-bottom:6px; display:block; }
   .stat { display:flex; justify-content:space-between; }
-  .rem { font-weight:bold; font-size:14px; }
+  .rem { font-weight:bold; font-size:15px; }
   .rem-ok { color:#27ae60; }
   .rem-full { color:#c0392b; }
-  .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; }
+  .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; vertical-align:middle; }
   .loading { text-align:center; padding:50px; color:#999; }
 </style>
 </head>
@@ -35,20 +35,15 @@
   <button class="pill" id="btnWE" onclick="sw('day','WE')">假日</button>
 </div>
 
-<div id="content"><div class="loading">正在抓取最新資料...</div></div>
+<div id="content"><div class="loading">即時資料同步中...</div></div>
 
 <script>
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
-const WD_SLOTS = [
-  {k:'06:00', l:'06:00–08:30 早班'}, {k:'08:30', l:'08:30–11:00 第一批'},
-  {k:'10:00', l:'10:00–12:30 暑期A'}, {k:'12:00', l:'12:00–14:30 第二批'},
-  {k:'13:30', l:'13:30–16:00 暑期B'}, {k:'15:30', l:'15:30–18:00 第三批'},
-  {k:'18:30', l:'18:30–21:00 晚班'}, {k:'19:00', l:'19:00–21:00 第四批'}
-];
-const WE_SLOTS = [
-  {k:'08:30–12:30', l:'08:30–12:30 假日(上)'}, {k:'13:30–17:30', l:'13:30–17:30 假日(下)'}
-];
+
+// 只需要定義時段的關鍵字
+const WD_KEYS = ["06:00", "08:30", "10:00", "12:00", "13:30", "15:30", "18:30", "19:00"];
+const WE_KEYS = ["08:30–12:30", "13:30–17:30"];
 
 let coaches = [], allData = {}, cohort = 'A', dayType = 'WD';
 
@@ -56,8 +51,7 @@ async function fetchSheet(gid, tq) {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&tq=${encodeURIComponent(tq)}&gid=${gid}`;
   const res = await fetch(url);
   const text = await res.text();
-  const json = JSON.parse(text.substring(47, text.length - 2));
-  return json.table.rows;
+  return JSON.parse(text.substring(47, text.length - 2)).table.rows;
 }
 
 async function load() {
@@ -76,11 +70,8 @@ async function load() {
         const res = await fetch(url);
         const text = await res.text();
         const rows = JSON.parse(text.substring(47, text.length - 2)).table.rows;
-        // 把每一格都轉成純文字並去掉空格
-        allData[c.name] = rows.map(r => (r.c || []).map(cell => {
-           const val = cell?.f || cell?.v || '';
-           return val.toString().trim();
-        }));
+        // 清理資料：轉為純文字陣列
+        allData[c.name] = rows.map(r => (r.c || []).map(cell => (cell?.f || cell?.v || '').toString().trim()));
       } catch (e) { console.error(c.name); }
     }));
     render();
@@ -96,38 +87,66 @@ function sw(k, v) {
   render();
 }
 
+function isOccupied(val) {
+  // 只要不是空的，且不是常見的橫線符號，就算有人
+  return val && val !== "" && val !== "-" && val !== "—" && val !== "──";
+}
+
 function render() {
-  const currentSlots = dayType === 'WD' ? WD_SLOTS : WE_SLOTS;
+  const keys = dayType === 'WD' ? WD_KEYS : WE_KEYS;
   const filtered = coaches.filter(c => c.cohort === cohort && c.type.includes(dayType));
   let html = '<div class="grid">';
 
   filtered.forEach(c => {
     const grid = allData[c.name] || [];
     let slotsHtml = '';
-    currentSlots.forEach(s => {
-      const row = grid.find(r => r[0] && r[0].includes(s.k));
+
+    keys.forEach(k => {
       let aUsed = 0, mUsed = 0;
-      if (row) {
-        const days = dayType === 'WD' ? 5 : 2; 
-        for (let i = 0; i < days; i++) {
-          const aV = row[2 + (i * 2)], mV = row[3 + (i * 2)];
-          
-          // --- 核心偵測邏輯升級 ---
-          // 只要不是空的、不是 '-'、不是 '—'、長度大於 0 就扣除
-          if (aV && aV !== "" && aV !== "-" && aV !== "—") aUsed++;
-          if (mV && mV !== "" && mV !== "-" && mV !== "—") mUsed++;
+      let foundTime = false;
+      let timeLabel = k;
+
+      // 關鍵邏輯：掃描整個表格，尋找匹配時段及其下方的空白列
+      for (let i = 0; i < grid.length; i++) {
+        const rowA = grid[i][0] || "";
+        
+        // 如果找到了目標時段，或正處於該時段的後續列（A欄為空）
+        if (rowA.includes(k)) {
+          foundTime = true;
+          timeLabel = rowA; // 使用完整的時段名稱 (如: 08:30–11:00 第一批)
+        } else if (foundTime && rowA !== "") {
+          // 如果碰到下一個有寫時間的列，代表這個時段結束了
+          break;
+        }
+
+        if (foundTime) {
+          const days = dayType === 'WD' ? 5 : 2;
+          for (let d = 0; d < days; d++) {
+            if (isOccupied(grid[i][2 + (d * 2)])) aUsed++;
+            if (isOccupied(grid[i][3 + (d * 2)])) mUsed++;
+          }
         }
       }
+
       const aR = Math.max(0, c.cap - aUsed), mR = Math.max(0, c.cap - mUsed);
-      slotsHtml += `<div class="slot"><span class="slot-time">${s.l}</span><div class="stat">
-        <span><span class="label">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'滿':'剩 '+aR}</span></span>
-        <span><span class="label">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'滿':'剩 '+mR}</span></span>
-      </div></div>`;
+      slotsHtml += `<div class="slot">
+        <span class="slot-time">🕒 ${timeLabel}</span>
+        <div class="stat">
+          <span><span class="label">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'滿':'剩 '+aR}</span></span>
+          <span><span class="label">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'滿':'剩 '+mR}</span></span>
+        </div>
+      </div>`;
     });
-    html += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
+
+    html += `<div class="card"><div class="coach-t">👤 ${coachNameFormat(c.name)}</div>${slotsHtml}</div>`;
   });
   document.getElementById('content').innerHTML = html + '</div>';
 }
+
+function coachNameFormat(name) {
+    return name.length > 3 ? name : name.split('').join(' ');
+}
+
 load();
 </script>
 </body>
