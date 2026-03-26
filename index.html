@@ -20,7 +20,6 @@
   .rem-ok { color:#27ae60; }
   .rem-full { color:#c0392b; }
   .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; }
-  .loading { text-align:center; padding:50px; color:#999; }
 </style>
 </head>
 <body>
@@ -35,13 +34,12 @@
   <button class="pill" id="btnWE" onclick="sw('day','WE')">假日</button>
 </div>
 
-<div id="content"><div class="loading">正在連線至雲端課表...</div></div>
+<div id="content"><div style="text-align:center;padding:50px;color:#999">同步課表中...</div></div>
 
 <script>
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
 
-// 絕對座標設定：對應 Excel 的行數 (JS 索引 = 行數 - 1)
 const WD_LAYOUT = [
   { label: '06:00–08:30 早班', rows: [3, 4, 5, 6] },
   { label: '08:30–11:00 第一批', rows: [11, 12, 13, 14] },
@@ -70,30 +68,33 @@ async function fetchSheet(gid, sheetName, range) {
   return JSON.parse(text.substring(47, text.length - 2)).table.rows;
 }
 
-function isOccupied(val) {
-  return val && val !== "" && val !== "-" && val !== "—" && val !== "──" && val !== "0";
+// ✨ 強化的佔位判定：只有當格子真的有文字才算佔位
+function isOccupied(cell) {
+  if (!cell || cell.v === null || cell.v === undefined) return false;
+  const val = (cell.f || cell.v || "").toString().trim();
+  // 排除掉常見的空值符號
+  const emptyMarkers = ["", "-", "—", "──", "0", "None", "null"];
+  return !emptyMarkers.includes(val);
 }
 
 async function load() {
   try {
     const cfgRows = await fetchSheet(CONFIG_GID, null, "B2:F100");
     coaches = cfgRows.map(r => ({
-      name: (r.c[0]?.v || '').toString().trim(),
-      cohort: (r.c[1]?.v || '').toString().includes('A') ? 'A' : 'B',
+      name: (r.c[0]?.v || "").toString().trim(),
+      cohort: (r.c[1]?.v || "").toString().includes('A') ? 'A' : 'B',
       type: (r.c[2]?.v || 'WDWE').toString().toUpperCase(),
-      cap: parseInt(r.c[4]?.v) || 4 // 改為讀取 F 欄 (索引 4)
+      cap: parseInt(r.c[4]?.v) || 4 // 讀取設定頁 F 欄
     })).filter(c => c.name !== "");
 
     await Promise.all(coaches.map(async (c) => {
       try {
         const rows = await fetchSheet(null, c.name, "A1:L80");
-        allData[c.name] = rows.map(r => (r.c || []).map(cell => (cell?.f || cell?.v || '').toString().trim()));
+        allData[c.name] = rows; // 存儲原始 rows 物件，包含屬性
       } catch (e) { console.error("抓取失敗: " + c.name); }
     }));
     render();
-  } catch (e) { 
-    document.getElementById('content').innerHTML = '<div class="loading">❌ 連線失敗，請檢查網路或發布設定。</div>';
-  }
+  } catch (e) { console.error(e); }
 }
 
 function render() {
@@ -101,37 +102,32 @@ function render() {
   const filtered = coaches.filter(c => c.cohort === cohort && c.type.includes(dayType));
   const container = document.getElementById('content');
   container.innerHTML = '';
-  
-  if (filtered.length === 0) {
-    container.innerHTML = '<div class="loading">此梯次目前無教練資料。</div>';
-    return;
-  }
 
   let html = '<div class="grid">';
   filtered.forEach(c => {
-    const grid = allData[c.name] || [];
+    const rows = allData[c.name] || [];
     let slotsHtml = '';
     layout.forEach(s => {
       let aUsed = 0, mUsed = 0;
       s.rows.forEach(idx => {
-        const row = grid[idx];
-        if (row) {
+        const r = rows[idx];
+        if (r && r.c) {
           const days = dayType === 'WD' ? 5 : 2;
           for (let d = 0; d < days; d++) {
-            if (isOccupied(row[2 + (d * 2)])) aUsed++;
-            if (isOccupied(row[3 + (d * 2)])) mUsed++;
+            if (isOccupied(r.c[2 + (d * 2)])) aUsed++; // 自排 C,E,G,I,K
+            if (isOccupied(r.c[3 + (d * 2)])) mUsed++; // 手排 D,F,H,J,L
           }
         }
       });
       const aR = Math.max(0, c.cap - aUsed), mR = Math.max(0, c.cap - mUsed);
       slotsHtml += `<div class="slot"><span class="slot-time">🕒 ${s.label}</span><div class="stat">
-        <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'滿':'剩 '+aR}</span></span>
-        <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'滿':'剩 '+mR}</span></span>
+        <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'已滿':'剩 '+aR}</span></span>
+        <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'已滿':'剩 '+mR}</span></span>
       </div></div>`;
     });
     html += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
   });
-  container.innerHTML = html + '</div>';
+  container.innerHTML = html + (filtered.length === 0 ? '<div style="grid-column:1/-1;text-align:center;padding:50px;color:#999">此分類目前無教練資料。</div>' : '') + '</div>';
 }
 
 function sw(k,v){ 
@@ -142,7 +138,6 @@ function sw(k,v){
   document.getElementById('btnWE').className = 'pill' + (dayType==='WE'?' active':'');
   render();
 }
-
 load();
 </script>
 </body>
