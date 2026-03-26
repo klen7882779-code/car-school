@@ -2,25 +2,24 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>第一駕訓班 — 名額診斷版</title>
+<title>第一駕訓班 — 名額查詢</title>
 <style>
   :root { --p:#1A1916; --acc:#27ae60; --bg:#F4F3EF; --c:#FFF; --b:#E0DDD5; }
   body { font-family:sans-serif; background:var(--bg); margin:0; padding:0; color:#333; }
-  .header { background:var(--p); color:#fff; padding:15px; text-align:center; }
-  .controls { background:var(--c); padding:10px; border-bottom:1px solid var(--b); text-align:center; position:sticky; top:0; z-index:100; }
+  .header { background:var(--p); color:#fff; padding:15px; text-align:center; position:sticky; top:0; z-index:100; }
+  .controls { background:var(--c); padding:10px; border-bottom:1px solid var(--b); text-align:center; position:sticky; top:60px; z-index:90; }
   .btn-group { display:flex; gap:5px; justify-content:center; margin-bottom:8px; flex-wrap:wrap; }
   .pill { padding:6px 14px; border-radius:20px; border:1px solid var(--b); background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
   .pill.active { background:#e67e22; color:#fff; border-color:#e67e22; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px; padding:15px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px; padding:15px; max-width:1100px; margin:auto; }
   .card { background:var(--c); border-radius:12px; padding:15px; border-top:5px solid var(--p); box-shadow:0 2px 8px rgba(0,0,0,0.1); }
-  .coach-t { font-size:17px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; display:flex; justify-content:space-between; }
+  .coach-t { font-size:17px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; }
   .slot { background:#f9f9f9; padding:10px; border-radius:8px; margin-bottom:8px; }
   .stat { display:flex; justify-content:space-between; align-items:center; }
   .rem { font-weight:bold; font-size:15px; }
   .ok { color:#27ae60; }
   .full { color:#e74c3c; font-weight:900; }
   .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; }
-  .diag-btn { font-size:10px; background:#eee; border:1px solid #ccc; cursor:pointer; padding:2px 5px; border-radius:3px; }
 </style>
 </head>
 <body>
@@ -46,7 +45,7 @@
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
 
-// 再次精準對應 [截圖 2.04.59]
+// 🛠️ 絕對精準座標：只抓有「白格子」的行，完全避開帶有時段文字的標題行
 const WD_LAYOUT = [
   { label: '06:00–08:30 早班', rows: [5, 6, 7, 8] },
   { label: '08:30–11:00 第一批', rows: [10, 11, 12, 13] },
@@ -59,18 +58,20 @@ const WD_LAYOUT = [
 ];
 
 const WE_LAYOUT = [
-  { label: '08:30–12:30 上午班', rows: [62, 63, 64, 65] },
-  { label: '13:30–17:30 下午班', rows: [70, 71, 72, 73] }
+  { label: '08:30–12:30 上午班', rows: [41, 42, 43, 44] },
+  { label: '13:30–17:30 下午班', rows: [45, 46, 47, 48] }
 ];
 
 let coaches = [], allData = {}, curC = 'A', curD = 0;
 
 function isName(cell) {
   if (!cell) return false;
+  // 徹底移除空白後判定
   let v = (cell.f || cell.v || "").toString().replace(/\s/g, "");
-  // 排除清單：只要包含這些字眼就不算「學生」
-  const black = ["—","──","─","-","_","0","null","不開放","第一批","接駁","08:30","11:00"];
-  if (v.length < 2) return false;
+  if (v.length < 2) return false; // 長度不足不算
+  
+  // 只要包含以下字眼，通通視為「標籤」而非「人名」
+  const black = ["—","──","─","-","_","0","null","不開放","假日","上午","下午","時段"];
   return !black.some(k => v.includes(k));
 }
 
@@ -85,18 +86,13 @@ async function load() {
     })).filter(c => c.name && c.name !== "教練姓名");
 
     for (let c of coaches) {
-      const r = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(c.name)}&range=A1:L80`);
+      // 增加抓取範圍到 A1:L100
+      const r = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(c.name)}&range=A1:L100`);
       const t = await r.text();
       allData[c.name] = JSON.parse(t.substring(47, t.length - 2)).table.rows;
     }
     render();
-  } catch (e) { alert("讀取失敗，請確認試算表權限"); }
-}
-
-function diagnose(name) {
-  const rows = allData[name];
-  const row12 = rows[11]?.c; // 第 12 列的資料
-  alert(`診斷 [${name}] 教練：\n第12列(08:30) A欄內容：${row12[0]?.v}\n週一自排(C欄)內容：'${row12[2]?.v || row12[2]?.f || '完全空的'}'\n文字長度：${(row12[2]?.v || "").toString().length}`);
+  } catch (e) { console.error(e); }
 }
 
 function render() {
@@ -111,7 +107,8 @@ function render() {
     layout.forEach(s => {
       let aU = 0, mU = 0;
       s.rows.forEach(rNum => {
-        const row = rows[rNum - 1];
+        // 重要：rows 陣列是從 0 開始，所以 Excel 第 10 行是索引 9
+        const row = rows[rNum - 1]; 
         if (row && row.c) {
           let colA = isWE ? (2 + (curD - 5) * 2) : (2 + curD * 2);
           let colM = colA + 1;
@@ -119,14 +116,13 @@ function render() {
           if (isName(row.c[colM])) mU++;
         }
       });
-      const aR = 4 - aU;
-      const mR = 4 - mU;
+      const aR = 4 - aU, mR = 4 - mU;
       slotsHtml += `<div class="slot"><span style="font-size:11px;color:#666">${s.label}</span><div class="stat">
         <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR<=0?'full':'ok'}">${aR<=0?'滿':'剩 '+aR}</span></span>
         <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR<=0?'full':'ok'}">${mR<=0?'滿':'剩 '+mR}</span></span>
       </div></div>`;
     });
-    html += `<div class="card"><div class="coach-t"><span>${c.name}</span> <button class="diag-btn" onclick="diagnose('${c.name}')">🔍 診斷</button></div>${slotsHtml}</div>`;
+    html += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
   });
   document.getElementById('content').innerHTML = html + '</div>';
 }
