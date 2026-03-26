@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>第一駕訓班 — 精準名額查詢</title>
+<title>第一駕訓班 — 名額查詢系統</title>
 <style>
   :root { --p:#1A1916; --acc:#27ae60; --bg:#F4F3EF; --c:#FFF; --b:#E0DDD5; }
   body { font-family:sans-serif; background:var(--bg); margin:0; padding:0; color:#333; }
@@ -10,7 +10,7 @@
   .controls { background:var(--c); padding:10px; border-bottom:1px solid var(--b); text-align:center; position:sticky; top:0; z-index:100; }
   .group { margin-bottom: 8px; display: flex; justify-content: center; gap: 5px; flex-wrap: wrap; }
   .pill { padding:6px 12px; border-radius:15px; border:1px solid var(--b); background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
-  .pill.active { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .pill.active { background:#e67e22; color:#fff; border-color:#e67e22; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px; padding:15px; }
   .card { background:var(--c); border-radius:12px; padding:15px; border-top:5px solid var(--p); box-shadow:0 2px 8px rgba(0,0,0,0.1); }
   .coach-t { font-size:17px; font-weight:bold; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:5px; }
@@ -47,32 +47,30 @@
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
 
-// 鎖定 Excel 行號 (索引 = 行號-1)
+// 絕對行號座標 (對應 Excel 左側數字)
 const WD_LAYOUT = [
-  { label: '06:00–08:30 早班', rows: [3, 4, 5, 6] },
-  { label: '08:30–11:00 第一批', rows: [11, 12, 13, 14] },
-  { label: '10:00–12:30 暑期A', rows: [19, 20, 21, 22] },
-  { label: '12:00–14:30 第二批', rows: [23, 24, 25, 26] },
-  { label: '13:30–16:00 暑期B', rows: [31, 32, 33, 34] },
-  { label: '15:30–18:00 第三批', rows: [35, 36, 37, 38] },
-  { label: '18:30–21:00 晚班', rows: [43, 44, 45, 46] },
-  { label: '19:00–21:00 第四批', rows: [51, 52, 53, 54] }
+  { label: '06:00–08:30 早班', rows: [4, 5, 6, 7] },
+  { label: '08:30–11:00 第一批', rows: [12, 13, 14, 15] },
+  { label: '10:00–12:30 暑期A', rows: [20, 21, 22, 23] },
+  { label: '12:00–14:30 第二批', rows: [24, 25, 26, 27] },
+  { label: '13:30–16:00 暑期B', rows: [32, 33, 34, 35] },
+  { label: '15:30–18:00 第三批', rows: [36, 37, 38, 39] },
+  { label: '18:30–21:00 晚班', rows: [44, 45, 46, 47] },
+  { label: '19:00–21:00 第四批', rows: [52, 53, 54, 55] }
 ];
 
 const WE_LAYOUT = [
-  { label: '08:30–12:30 假日上午', rows: [61, 62, 63, 64] },
-  { label: '13:30–17:30 假日下午', rows: [69, 70, 71, 72] }
+  { label: '08:30–12:30 假日上午', rows: [62, 63, 64, 65] },
+  { label: '13:30–17:30 假日下午', rows: [70, 71, 72, 73] }
 ];
 
 let coaches = [], allData = {}, curCohort = 'A', curDay = 0;
 
-// ✨ 嚴格判定邏輯：排除 A 欄與 B 欄的影響
-function isStudent(cell) {
-  if (!cell) return false;
-  let v = (cell.f || cell.v || "").toString().replace(/\s/g, "");
-  // 如果是空、橫線、長度小於2，通通不算有人
-  const ignore = ["","-","—","──","─","_","0","不開放","null"];
-  return v.length >= 2 && !ignore.includes(v);
+function isStudent(val) {
+  if (!val) return false;
+  let v = val.toString().replace(/\s/g, "");
+  // 長度至少要2個字才算人名
+  return v.length >= 2 && !["—","──","─","-","_","0","null","不開放"].includes(v);
 }
 
 async function fetchJSON(gid, name) {
@@ -96,7 +94,7 @@ async function load() {
       allData[c.name] = rows;
     }));
     render();
-  } catch (e) { document.getElementById('content').innerHTML = "資料載入中..."; }
+  } catch (e) { console.error(e); }
 }
 
 function render() {
@@ -112,16 +110,20 @@ function render() {
     
     layout.forEach(s => {
       let aU = 0, mU = 0;
-      s.rows.forEach(idx => {
-        const r = rows[idx];
+      s.rows.forEach(realRowNumber => {
+        const r = rows[realRowNumber - 1]; // Excel 第12列 = 索引11
         if (r && r.c) {
+          // 關鍵修正：直接計算 C(2), D(3), E(4), F(5), G(6), H(7), I(8), J(9), K(10), L(11) 欄
+          // 不管 A/B 欄有沒有文字，C 欄永遠是索引 2
           if (!isWE) {
-            // 平日：只看 C 到 L 欄 (索引 2 開始)
-            if (isStudent(r.c[2 + (curDay * 2)])) aU++; 
-            if (isStudent(r.c[3 + (curDay * 2)])) mU++;
+            let colIdxA = 2 + (curDay * 2);
+            let colIdxM = 3 + (curDay * 2);
+            if (isStudent(r.c[colIdxA]?.v || r.c[colIdxA]?.f)) aU++; 
+            if (isStudent(r.c[colIdxM]?.v || r.c[colIdxM]?.f)) mU++;
           } else {
-            // 假日：目前看週六
-            if (isStudent(r.c[2])) aU++; if (isStudent(r.c[3])) mU++;
+            // 假日鎖定看週六
+            if (isStudent(r.c[2]?.v || r.c[2]?.f)) aU++; 
+            if (isStudent(r.c[3]?.v || r.c[3]?.f)) mU++;
           }
         }
       });
