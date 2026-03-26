@@ -2,52 +2,46 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>第一汽車駕訓班 - 教練排課系統</title>
+    <title>第一汽車駕訓班 - 排課查詢系統</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f8f9fa; margin: 0; padding: 20px; }
-        .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        body { font-family: -apple-system, sans-serif; background: #f4f4f9; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h2 { text-align: center; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
-        .controls { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; background: #e9ecef; padding: 15px; border-radius: 5px; }
-        select { padding: 8px 12px; border-radius: 4px; border: 1px solid #ced4da; font-size: 16px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
-        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: center; vertical-align: top; word-break: break-all; }
-        th { background-color: #007bff; color: white; width: 14%; }
-        .slot-time { background-color: #f1f3f5; font-weight: bold; width: 100px !important; }
-        .type-tag { font-size: 11px; padding: 2px 4px; border-radius: 3px; display: inline-block; margin-bottom: 3px; }
-        .auto-type { background: #e7f5ff; color: #1971c2; border: 1px solid #a5d8ff; } /* 自排藍 */
-        .manual-type { background: #fff5f5; color: #c92a2a; border: 1px solid #ffc9c9; } /* 手排紅 */
-        .student-name { font-size: 14px; margin: 2px 0; color: #495057; }
-        .loading { text-align: center; font-style: italic; color: #666; padding: 20px; }
+        .controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; background: #eee; padding: 15px; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: center; }
+        th { background: #007bff; color: white; }
+        .auto-tag { color: #007bff; font-weight: bold; }
+        .manual-tag { color: #dc3545; font-weight: bold; }
+        .loading { text-align: center; color: #666; padding: 20px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>第一汽車駕訓班 - 即時排課查詢</h2>
-    
+    <h2>第一汽車駕訓班 - 即時課表</h2>
     <div class="controls">
-        <label>梯次：<select id="sel-batch"><option value="A">A梯</option><option value="B" selected>B梯</option></select></label>
-        <label>班別：<select id="sel-class"><option value="平日">平日班</option><option value="假日">假日班</option></select></label>
-        <label>教練：<select id="sel-coach"><option value="">載入中...</option></select></label>
+        <select id="sel-batch"><option value="A">A梯</option><option value="B" selected>B梯</option></select>
+        <select id="sel-coach"><option value="">載入教練名單中...</option></select>
     </div>
-
-    <div id="status" class="loading">正在連線至 Google Sheet...</div>
-    <table id="sched-table" style="display:none;">
-        <thead>
-            <tr>
-                <th class="slot-time">時段</th>
-                <th>週一 (一)</th><th>週二 (二)</th><th>週三 (三)</th><th>週四 (四)</th><th>週五 (五)</th><th>週六 (六)</th>
-            </tr>
-        </thead>
-        <tbody id="sched-body"></tbody>
-    </table>
+    <div id="status" class="loading">正在連線 Google 試算表...</div>
+    <div id="table-area" style="display:none;">
+        <table>
+            <thead>
+                <tr>
+                    <th>時段</th><th>週一</th><th>週二</th><th>週三</th><th>週四</th><th>週五</th><th>週六</th>
+                </tr>
+            </thead>
+            <tbody id="sched-body"></tbody>
+        </table>
+    </div>
 </div>
 
 <script>
-// --- 請確保您的試算表已開啟「知道連結的人皆可檢視」 ---
 const SPREADSHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
+const SETTING_GID = '1201782600';
 
-// 對應您照片中的 A 欄字串 (必須完全一樣)
+// 修正：完全對齊照片中的 Excel 文字
 const SLOTS = [
     {key: '06:00 - 06:50', label: '06:00-06:50'},
     {key: '06:50 - 07:40', label: '06:50-07:40'},
@@ -57,7 +51,6 @@ const SLOTS = [
     {key: '10:10 - 11:00', label: '10:10-11:00'}
 ];
 
-const DAYS = ['一','二','三','四','五','六'];
 let allCoaches = [];
 
 async function fetchSheet(gid, query = "select *") {
@@ -67,90 +60,62 @@ async function fetchSheet(gid, query = "select *") {
     return JSON.parse(text.substring(47, text.length - 2)).table.rows;
 }
 
-// 1. 初始化：讀取【設定】分頁
 async function init() {
     try {
-        // 假設【設定】分頁 GID 是 1201782600 (請確認網址列 gid)
-        const rows = await fetchSheet('1201782600', "select B, C, D, E"); 
+        const rows = await fetchSheet(SETTING_GID, "select B, C, D, E");
         allCoaches = rows.map(r => ({
             name: r.c[0]?.v,
-            batch: r.c[1]?.v,
-            type: r.c[2]?.v,
+            batch: r.c[1]?.v?.replace('梯','').trim(),
             gid: r.c[3]?.v
         })).filter(c => c.name && c.gid);
-
-        updateCoachList();
-        document.getElementById('status').innerText = "請選擇教練";
+        updateList();
     } catch (e) {
-        document.getElementById('status').innerText = "讀取失敗，請確認試算表權限或 GID 是否正確。";
-        console.error(e);
+        document.getElementById('status').innerText = "讀取設定失敗，請確認試算表已發佈且開啟權限。";
     }
 }
 
-function updateCoachList() {
+function updateList() {
     const b = document.getElementById('sel-batch').value;
-    const c = document.getElementById('sel-class').value;
-    const filtered = allCoaches.filter(i => i.batch == b && i.type == c);
-    
+    const filtered = allCoaches.filter(c => c.batch === b);
     const sel = document.getElementById('sel-coach');
-    sel.innerHTML = filtered.map(i => `<option value="${i.gid}">${i.name}</option>`).join('');
+    sel.innerHTML = filtered.map(c => `<option value="${c.gid}">${c.name}</option>`).join('');
     if(filtered.length > 0) loadSchedule(filtered[0].gid);
 }
 
-// 2. 讀取個別教練課表
 async function loadSchedule(gid) {
-    const status = document.getElementById('status');
-    const table = document.getElementById('sched-table');
-    status.style.display = 'block';
-    table.style.display = 'none';
-    status.innerText = "讀取教練課表中...";
-
+    document.getElementById('status').style.display = 'block';
+    document.getElementById('table-area').style.display = 'none';
     try {
-        // 抓取 A1:N30 範圍 (包含週一到週日的自手排欄位)
         const rows = await fetchSheet(gid, "select * offset 1");
-        renderTable(rows);
-        status.style.display = 'none';
-        table.style.display = 'table';
+        render(rows);
+        document.getElementById('status').style.display = 'none';
+        document.getElementById('table-area').style.display = 'block';
     } catch (e) {
-        status.innerText = "課表載入失敗。";
+        document.getElementById('status').innerText = "課表載入失敗。";
     }
 }
 
-function renderTable(rows) {
+function render(rows) {
     const tbody = document.getElementById('sched-body');
     tbody.innerHTML = '';
-
     SLOTS.forEach(slot => {
-        let tr = `<tr><td class="slot-time">${slot.label}</td>`;
-        
-        // 找到對應 Excel 的那一列
+        let tr = `<tr><td style="background:#f9f9f9;font-weight:bold">${slot.label}</td>`;
         const rowData = rows.find(r => r.c[0]?.v === slot.key);
-
-        for (let i = 0; i < 6; i++) { // 週一到週六
-            // 照片中：週一自=C(2), 手=D(3) | 週二自=E(4), 手=F(5) ...
-            const autoIdx = 2 + (i * 2);
-            const manualIdx = 3 + (i * 2);
-            
-            const autoStudents = rowData?.c[autoIdx]?.v || '';
-            const manualStudents = rowData?.c[manualIdx]?.v || '';
-
+        for (let i = 0; i < 6; i++) {
+            const autoV = rowData?.c[2+(i*2)]?.v || '';
+            const manualV = rowData?.c[3+(i*2)]?.v || '';
             tr += `<td>`;
-            if(autoStudents) tr += `<div class="type-tag auto-type">自</div><div class="student-name">${autoStudents.replace(/\n/g,'<br>')}</div>`;
-            if(manualStudents) tr += `<div class="type-tag manual-type">手</div><div class="student-name">${manualStudents.replace(/\n/g,'<br>')}</div>`;
+            if(autoV) tr += `<div class="auto-tag">自: ${autoV}</div>`;
+            if(manualV) tr += `<div class="manual-tag">手: ${manualV}</div>`;
             tr += `</td>`;
         }
-        tr += `</tr>`;
-        tbody.innerHTML += tr;
+        tbody.innerHTML += tr + `</tr>`;
     });
 }
 
-// 事件監聽
-document.getElementById('sel-batch').addEventListener('change', updateCoachList);
-document.getElementById('sel-class').addEventListener('change', updateCoachList);
-document.getElementById('sel-coach').addEventListener('change', (e) => loadSchedule(e.target.value));
-
+document.getElementById('sel-batch').onchange = updateList;
+document.getElementById('sel-coach').onchange = (e) => loadSchedule(e.target.value);
 init();
 </script>
-
 </body>
 </html>
