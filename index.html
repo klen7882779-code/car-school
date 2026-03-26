@@ -37,55 +37,48 @@
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
 
-// --- 平日班：強制鎖定 Excel 行數 (絕對座標) ---
-const WD_CONFIG = [
-  { label: '06:00–08:30 早班', start: 4, end: 10 },    // Excel 第 4 到 10 行
-  { label: '08:30–11:00 第一批', start: 12, end: 18 },  // Excel 第 12 到 18 行
-  { label: '10:00–12:30 暑期A', start: 20, end: 22 },    // 您 Excel 這兩區比較短
-  { label: '12:00–14:30 第二批', start: 24, end: 30 },
-  { label: '13:30–16:00 暑期B', start: 32, end: 34 },
-  { label: '15:30–18:00 第三批', start: 36, end: 42 },
-  { label: '18:30–21:00 晚班', start: 44, end: 50 },
-  { label: '19:00–21:00 第四批', start: 52, end: 58 }
+// --- 強制對齊 Excel 行數 (JavaScript 索引從 0 開始，所以 Excel 第 4 行 = 索引 3) ---
+const WD_LAYOUT = [
+  { label: '06:00–08:30 早班', rows: [3, 4, 5, 6] },      // Excel 行 4,5,6,7
+  { label: '08:30–11:00 第一批', rows: [11, 12, 13, 14] }, // Excel 行 12,13,14,15
+  { label: '10:00–12:30 暑期A', rows: [19, 20] },         // Excel 行 20,21
+  { label: '12:00–14:30 第二批', rows: [23, 24, 25, 26] }, // Excel 行 24,25,26,27
+  { label: '13:30–16:00 暑期B', rows: [31, 32] },         // Excel 行 32,33
+  { label: '15:30–18:00 第三批', rows: [35, 36, 37, 38] }, // Excel 行 36,37,38,39
+  { label: '18:30–21:00 晚班', rows: [43, 44, 45, 46] },   // Excel 行 44,45,46,47
+  { label: '19:00–21:00 第四批', rows: [51, 52, 53, 54] }  // Excel 行 52,53,54,55
 ];
 
-// --- 假日班：強制鎖定 Excel 行數 ---
-const WE_CONFIG = [
-  { label: '08:30–12:30 假日上午', start: 62, end: 68 },
-  { label: '13:30–17:30 假日下午', start: 70, end: 76 }
+const WE_LAYOUT = [
+  { label: '08:30–12:30 假日上午', rows: [61, 62, 63, 64] }, // Excel 行 62,63,64,65
+  { label: '13:30–17:30 假日下午', rows: [69, 70, 71, 72] }  // Excel 行 70,71,72,73
 ];
 
 let coaches = [], allData = {}, cohort = 'A', dayType = 'WD';
 
-async function fetchSheet(gid, sheetName, range) {
-  let url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
-  if (gid) url += `&gid=${gid}`;
-  if (sheetName) url += `&sheet=${encodeURIComponent(sheetName)}`;
-  if (range) url += `&range=${range}`;
-  
+async function fetchJSON(gid, tq) {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&tq=${encodeURIComponent(tq)}&gid=${gid}`;
   const res = await fetch(url);
   const text = await res.text();
   return JSON.parse(text.substring(47, text.length - 2)).table.rows;
 }
 
-function isOccupied(val) {
-  return val && val !== "" && val !== "-" && val !== "—" && val !== "──" && val !== "0";
-}
-
 async function load() {
   try {
-    const cfgRows = await fetchSheet(CONFIG_GID, null, "B2:F100");
+    const cfgRows = await fetchJSON(CONFIG_GID, "select B, C, D, F");
     coaches = cfgRows.map(r => ({
       name: (r.c[0]?.v || '').toString().trim(),
       cohort: (r.c[1]?.v || '').toString().includes('A') ? 'A' : 'B',
       type: (r.c[2]?.v || 'WDWE').toString().toUpperCase(),
       cap: parseInt(r.c[3]?.v) || 4
-    })).filter(c => c.name && c.gid);
+    })).filter(c => c.name);
 
     await Promise.all(coaches.map(async (c) => {
       try {
-        // 抓取更大範圍 (A1:L80)，確保假日班也抓到
-        const rows = await fetchSheet(null, c.name, "A1:L80");
+        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(c.name)}&range=A1:L80`;
+        const res = await fetch(url);
+        const text = await res.text();
+        const rows = JSON.parse(text.substring(47, text.length - 2)).table.rows;
         allData[c.name] = rows.map(r => (r.c || []).map(cell => (cell?.f || cell?.v || '').toString().trim()));
       } catch (e) { console.error(c.name); }
     }));
@@ -93,8 +86,12 @@ async function load() {
   } catch (e) { console.error(e); }
 }
 
+function isOccupied(val) {
+  return val && val !== "" && val !== "-" && val !== "—" && val !== "──" && val !== "0";
+}
+
 function render() {
-  const slotsConfig = dayType === 'WD' ? WD_CONFIG : WE_CONFIG;
+  const layout = dayType === 'WD' ? WD_LAYOUT : WE_LAYOUT;
   const filtered = coaches.filter(c => c.cohort === cohort && c.type.includes(dayType));
   let html = '<div class="grid">';
 
@@ -102,23 +99,20 @@ function render() {
     const grid = allData[c.name] || [];
     let slotsHtml = '';
 
-    slotsConfig.forEach(s => {
+    layout.forEach(s => {
       let aUsed = 0, mUsed = 0;
-
-      // --- 核心邏輯：直接鎖定 Excel 的列 (start 到 end) ---
-      // 注意：JavaScript 的陣列索引是從 0 開始，所以 Excel 第 4 行對應 grid[3]
-      for (let i = s.start - 1; i < s.end; i++) {
-        if (!grid[i]) continue;
-
-        // 平日看 5 天，假日看 2 天
-        const days = dayType === 'WD' ? 5 : 2;
-        for (let d = 0; d < days; d++) {
-          // 自排在 C, E, G, I, K (索引 2, 4, 6, 8, 10)
-          if (isOccupied(grid[i][2 + (d * 2)])) aUsed++;
-          // 手排在 D, F, H, J, L (索引 3, 5, 7, 9, 11)
-          if (isOccupied(grid[i][3 + (d * 2)])) mUsed++;
+      
+      // 依照設定的 rows 索引直接抓取該時段的每一行
+      s.rows.forEach(rowIndex => {
+        const row = grid[rowIndex];
+        if (row) {
+          const days = dayType === 'WD' ? 5 : 2;
+          for (let d = 0; d < days; d++) {
+            if (isOccupied(row[2 + (d * 2)])) aUsed++; // 自排 C,E,G,I,K
+            if (isOccupied(row[3 + (d * 2)])) mUsed++; // 手排 D,F,H,J,L
+          }
         }
-      }
+      });
 
       const aR = Math.max(0, c.cap - aUsed), mR = Math.max(0, c.cap - mUsed);
       slotsHtml += `<div class="slot">
