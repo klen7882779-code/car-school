@@ -2,151 +2,132 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>第一駕訓班 — 名額查詢最終校正版</title>
+<title>第一駕訓班 — 每日名額精準版</title>
 <style>
   :root { --p:#1A1916; --acc:#27ae60; --bg:#F4F3EF; --c:#FFF; --b:#E0DDD5; }
   body { font-family:sans-serif; background:var(--bg); margin:0; padding:0; color:#333; }
-  .header { background:var(--p); color:#fff; padding:15px; text-align:center; }
-  .controls { background:var(--c); padding:10px; border-bottom:1px solid var(--b); text-align:center; position:sticky; top:0; z-index:100; }
-  .group { margin-bottom: 8px; display: flex; justify-content: center; gap: 5px; flex-wrap: wrap; }
-  .pill { padding:6px 12px; border-radius:15px; border:1px solid var(--b); background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
+  .header { background:var(--p); color:#fff; padding:15px; text-align:center; position:sticky; top:0; z-index:100; }
+  .controls { background:var(--c); padding:10px; border-bottom:1px solid var(--b); text-align:center; position:sticky; top:60px; z-index:90; }
+  .btn-group { display:flex; gap:5px; flex-wrap:wrap; justify-content:center; margin-bottom:8px; }
+  .pill { padding:6px 14px; border-radius:20px; border:1px solid var(--b); background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
   .pill.active { background:#e67e22; color:#fff; border-color:#e67e22; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px; padding:15px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px; padding:15px; max-width:1100px; margin:auto; }
   .card { background:var(--c); border-radius:12px; padding:15px; border-top:5px solid var(--p); box-shadow:0 2px 8px rgba(0,0,0,0.1); }
-  .coach-t { font-size:17px; font-weight:bold; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:5px; }
-  .slot { background:#f9f9f9; padding:8px; border-radius:8px; margin-bottom:6px; font-size:13px; }
-  .stat { display:flex; justify-content:space-between; margin-top:4px; }
+  .coach-t { font-size:17px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; }
+  .slot { background:#f9f9f9; padding:10px; border-radius:8px; margin-bottom:8px; }
+  .stat { display:flex; justify-content:space-between; align-items:center; }
   .rem { font-weight:bold; font-size:15px; }
-  .ok { color:var(--acc); }
-  .full { color:#e74c3c; font-weight:bold; }
-  .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:4px; }
+  .ok { color:#27ae60; }
+  .full { color:#e74c3c; font-weight:900; }
+  .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; }
 </style>
 </head>
 <body>
-
-<div class="header"><h2 style="margin:0">🚗 第一汽車駕訓班 — 名額查詢</h2></div>
-
+<div class="header"><h2 style="margin:0">🚗 第一駕訓班 — 每日名額</h2></div>
 <div class="controls">
-  <div class="group">
+  <div class="btn-group">
     <button class="pill active" id="cA" onclick="sw('cohort','A')">A 梯次</button>
     <button class="pill" id="cB" onclick="sw('cohort','B')">B 梯次</button>
   </div>
-  <div class="group">
-    <button class="pill active" id="d0" onclick="sw('day',0)">週一</button>
-    <button class="pill" id="d1" onclick="sw('day',1)">週二</button>
-    <button class="pill" id="d2" onclick="sw('day',2)">週三</button>
-    <button class="pill" id="d3" onclick="sw('day',3)">週四</button>
-    <button class="pill" id="d4" onclick="sw('day',4)">週五</button>
-    <button class="pill" id="dWE" onclick="sw('day','WE')">假日</button>
+  <div class="btn-group">
+    <button class="pill active" id="d0" onclick="sw('day',0)">一</button>
+    <button class="pill" id="d1" onclick="sw('day',1)">二</button>
+    <button class="pill" id="d2" onclick="sw('day',2)">三</button>
+    <button class="pill" id="d3" onclick="sw('day',3)">四</button>
+    <button class="pill" id="d4" onclick="sw('day',4)">五</button>
+    <button class="pill" id="d5" onclick="sw('day',5)">六</button>
+    <button class="pill" id="d6" onclick="sw('day',6)">日</button>
   </div>
 </div>
-
-<div id="content" class="grid"></div>
+<div id="content"></div>
 
 <script>
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
 
-// 絕對行號校正
+// 🛠️ 根據截圖重新精準定位 (跳過粉色/藍色標題列)
 const WD_LAYOUT = [
-  { label: '06:00–08:30 早班', rows: [4, 5, 6, 7] },
-  { label: '08:30–11:00 第一批', rows: [12, 13, 14, 15] },
-  { label: '10:00–12:30 暑期A', rows: [20, 21, 22, 23] },
-  { label: '12:00–14:30 第二批', rows: [24, 25, 26, 27] },
-  { label: '13:30–16:00 暑期B', rows: [32, 33, 34, 35] },
-  { label: '15:30–18:00 第三批', rows: [36, 37, 38, 39] },
-  { label: '18:30–21:00 晚班', rows: [44, 45, 46, 47] },
-  { label: '19:00–21:00 第四批', rows: [52, 53, 54, 55] }
+  { label: '06:00–08:30 早班', rows: [5, 6, 7, 8] },      // 第 4 列是標題，跳過
+  { label: '08:30–11:00 第一批', rows: [10, 11, 12, 13] }, // 第 9 列是標題，跳過
+  { label: '10:00–12:30 暑期加開', rows: [15, 16, 17, 18] },
+  { label: '12:00–14:30 第二批', rows: [20, 21, 22, 23] },
+  { label: '13:30–16:00 暑期加開', rows: [25, 26, 27, 28] },
+  { label: '15:30–18:00 第三批', rows: [30, 31, 32, 33] },
+  { label: '18:30–21:00 晚班', rows: [35, 36, 37, 38] },
+  { label: '19:00–21:00 第四批', rows: [40, 41, 42, 43] }
 ];
 
 const WE_LAYOUT = [
-  { label: '08:30–12:30 假日上午', rows: [62, 63, 64, 65] },
-  { label: '13:30–17:30 假日下午', rows: [70, 71, 72, 73] }
+  { label: '08:30–12:30 上午班', rows: [41, 42, 43, 44] },
+  { label: '13:30–17:30 下午班', rows: [45, 46, 47, 48] }
 ];
 
-let coaches = [], allData = {}, curCohort = 'A', curDay = 0;
+let coaches = [], allData = {}, curC = 'A', curD = 0;
 
-function isStudent(val) {
-  if (!val) return false;
-  let v = val.toString().replace(/\s/g, "");
-  const ignore = ["","—","──","─","-","_","0","null","不開放"];
-  return v.length >= 2 && !ignore.includes(v);
-}
-
-async function fetchJSON(gid, name) {
-  let url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}`;
-  if(name) url += `&sheet=${encodeURIComponent(name)}&range=A1:L80`;
-  const res = await fetch(url);
-  const text = await res.text();
-  return JSON.parse(text.substring(47, text.length - 2)).table.rows;
+function isName(cell) {
+  if (!cell) return false;
+  let v = (cell.f || cell.v || "").toString().replace(/\s/g, "");
+  // 排除掉不該算的人（橫線、0、時段文字）
+  if (v.length < 2) return false;
+  return !["—","──","─","-","_","0","null","不開放"].some(k => v.includes(k));
 }
 
 async function load() {
   try {
-    const cfg = await fetchJSON(CONFIG_GID);
+    const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${CONFIG_GID}`);
+    const text = await res.text();
+    const cfg = JSON.parse(text.substring(47, text.length - 2)).table.rows;
     coaches = cfg.map(r => ({
       name: (r.c[1]?.v || "").toString().trim(),
       cohort: (r.c[2]?.v || "").toString().includes('A') ? 'A' : 'B'
     })).filter(c => c.name && c.name !== "教練姓名");
 
     await Promise.all(coaches.map(async (c) => {
-      const rows = await fetchJSON(null, c.name);
-      allData[c.name] = rows;
+      const r = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(c.name)}&range=A1:L80`);
+      const t = await r.text();
+      allData[c.name] = JSON.parse(t.substring(47, t.length - 2)).table.rows;
     }));
     render();
   } catch (e) { console.error(e); }
 }
 
 function render() {
-  const isWE = curDay === 'WE';
+  const isWE = curD >= 5;
   const layout = isWE ? WE_LAYOUT : WD_LAYOUT;
-  const filtered = coaches.filter(c => c.cohort === curCohort);
-  const container = document.getElementById('content');
-  container.innerHTML = '';
+  const filtered = coaches.filter(c => c.cohort === curC);
+  let html = '<div class="grid">';
 
   filtered.forEach(c => {
     const rows = allData[c.name] || [];
     let slotsHtml = '';
-    
     layout.forEach(s => {
       let aU = 0, mU = 0;
-      s.rows.forEach(realRowNumber => {
-        const r = rows[realRowNumber - 1]; 
-        if (r && r.c) {
-          // 🛡️ 究極修正：從右邊往回數，避開 A/B 欄位移
-          // L(11), K(10), J(9), I(8), H(7), G(6), F(5), E(4), D(3), C(2)
-          // 週五(d=4): L(11), K(10) | 週四(d=3): J(9), I(8) | 週三(d=2): H(7), G(6) ...
-          
-          if (!isWE) {
-             let autoIdx = 2 + (curDay * 2);
-             let manualIdx = 3 + (curDay * 2);
-             
-             // 如果該列長度不足（代表 Google 縮減了空欄位），直接跳過
-             if (r.c.length >= 10) {
-                 if (isStudent(r.c[autoIdx]?.v || r.c[autoIdx]?.f)) aU++; 
-                 if (isStudent(r.c[manualIdx]?.v || r.c[manualIdx]?.f)) mU++;
-             }
-          } else {
-             if (isStudent(r.c[2]?.v || r.c[2]?.f)) aU++; 
-             if (isStudent(r.c[3]?.v || r.c[3]?.f)) mU++;
-          }
+      s.rows.forEach(rNum => {
+        const row = rows[rNum - 1];
+        if (row && row.c) {
+          // 計算對應星期的欄位
+          let colA = isWE ? (2 + (curD - 5) * 2) : (2 + curD * 2);
+          let colM = colA + 1;
+          if (isName(row.c[colA])) aU++;
+          if (isName(row.c[colM])) mU++;
         }
       });
       const aR = 4 - aU, mR = 4 - mU;
-      slotsHtml += `<div class="slot"><b>${s.label}</b><div class="stat">
+      slotsHtml += `<div class="slot"><span style="font-size:11px;font-weight:700;color:#666;margin-bottom:5px;display:block">${s.label}</span><div class="stat">
         <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR<=0?'full':'ok'}">${aR<=0?'滿':'剩 '+aR}</span></span>
         <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR<=0?'full':'ok'}">${mR<=0?'滿':'剩 '+mR}</span></span>
       </div></div>`;
     });
-    container.innerHTML += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
+    html += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
   });
+  document.getElementById('content').innerHTML = html + '</div>';
 }
 
-function sw(type, val) {
-  if (type === 'cohort') curCohort = val; else curDay = val;
+function sw(t, v) {
+  if (t === 'cohort') curC = v; else curD = v;
   document.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
-  document.getElementById('c' + curCohort).classList.add('active');
-  document.getElementById('d' + (curDay === 'WE' ? 'WE' : curDay)).classList.add('active');
+  document.getElementById('c' + curC).classList.add('active');
+  document.getElementById('d' + curD).classList.add('active');
   render();
 }
 load();
