@@ -18,7 +18,7 @@
   .stat { display:flex; justify-content:space-between; }
   .rem { font-weight:bold; font-size:15px; }
   .rem-ok { color:#27ae60; }
-  .rem-full { color:#c0392b; font-weight:900; }
+  .rem-full { color:#e74c3c; font-weight:900; }
   .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; }
 </style>
 </head>
@@ -31,12 +31,13 @@
   <button class="pill active" id="btnWD" onclick="sw('day','WD')">平日</button>
   <button class="pill" id="btnWE" onclick="sw('day','WE')">假日</button>
 </div>
-<div id="content"><div style="text-align:center;padding:50px;color:#999">資料同步中...</div></div>
+<div id="content"><div style="text-align:center;padding:50px;color:#999">資料載入中...</div></div>
 
 <script>
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
 
+// 鎖定 Excel 物理行數
 const WD_LAYOUT = [
   { label: '06:00–08:30 早班', rows: [3, 4, 5, 6] },
   { label: '08:30–11:00 第一批', rows: [11, 12, 13, 14] },
@@ -54,7 +55,7 @@ const WE_LAYOUT = [
 
 let coaches = [], allData = {}, cohort = 'A', dayType = 'WD';
 
-async function fetchSheet(gid, sheetName, range) {
+async function fetchJSON(gid, sheetName, range) {
   let url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
   if (gid) url += `&gid=${gid}`;
   if (sheetName) url += `&sheet=${encodeURIComponent(sheetName)}`;
@@ -64,24 +65,29 @@ async function fetchSheet(gid, sheetName, range) {
   return JSON.parse(text.substring(47, text.length - 2)).table.rows;
 }
 
-// 🛡️ 最強過濾函數
-function isOccupied(cell) {
-  if (!cell) return false;
-  let val = (cell.f || cell.v || "").toString().replace(/\s/g, ""); // 移除所有空格
+// 🛡️ 究極偵測函數：排除一切非姓名內容
+function isRealName(cell) {
+  if (!cell || cell.v === null || cell.v === undefined) return false;
   
-  // 如果長度為0，代表絕對是空的
+  // 取得顯示的文字內容並移除所有空白
+  let val = (cell.f || cell.v || "").toString().replace(/\s/g, "");
+  
+  // 1. 如果長度小於 2，且不是特定的單字名，通常不是姓名
   if (val.length === 0) return false;
   
-  // 排除掉所有種類的橫線、0、底線
-  const blacklist = ["-", "—", "──", "─", "_", "0", "null", "None", "—"];
-  if (blacklist.includes(val)) return false;
+  // 2. 排除掉所有的符號、數字
+  const ignoreList = ["-", "—", "──", "─", "_", "0", "None", "null", "undefined", ".", "。"];
+  if (ignoreList.includes(val)) return false;
   
-  return true; // 只要過濾掉以上，剩下的就是人名
+  // 3. 額外檢查：如果內容只包含符號或空格，也不算
+  if (/^[ \-—─0]+$/.test(val)) return false;
+
+  return true; 
 }
 
 async function load() {
   try {
-    const cfgRows = await fetchSheet(CONFIG_GID, null, "B2:F100");
+    const cfgRows = await fetchJSON(CONFIG_GID, null, "B2:F100");
     coaches = cfgRows.map(r => ({
       name: (r.c[0]?.v || "").toString().trim(),
       cohort: (r.c[1]?.v || "").toString().includes('A') ? 'A' : 'B',
@@ -91,7 +97,7 @@ async function load() {
 
     await Promise.all(coaches.map(async (c) => {
       try {
-        const rows = await fetchSheet(null, c.name, "A1:L80");
+        const rows = await fetchJSON(null, c.name, "A1:L80");
         allData[c.name] = rows;
       } catch (e) { console.error(c.name); }
     }));
@@ -116,8 +122,8 @@ function render() {
         if (r && r.c) {
           const days = dayType === 'WD' ? 5 : 2;
           for (let d = 0; d < days; d++) {
-            if (isOccupied(r.c[2 + (d * 2)])) aUsed++;
-            if (isOccupied(r.c[3 + (d * 2)])) mUsed++;
+            if (isRealName(r.c[2 + (d * 2)])) aUsed++;
+            if (isRealName(r.c[3 + (d * 2)])) mUsed++;
           }
         }
       });
@@ -129,7 +135,7 @@ function render() {
     });
     html += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
   });
-  container.innerHTML = html + (filtered.length === 0 ? '<div style="grid-column:1/-1;text-align:center;padding:50px;color:#999">目前無資料。</div>' : '') + '</div>';
+  container.innerHTML = html + '</div>';
 }
 
 function sw(k,v){ 
