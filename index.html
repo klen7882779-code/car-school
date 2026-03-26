@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>第一駕訓班 — 最終精準版</title>
+<title>第一駕訓班 — 精準名額查詢</title>
 <style>
   :root { --p:#1A1916; --acc:#27ae60; --bg:#F4F3EF; --c:#FFF; --b:#E0DDD5; }
   body { font-family:sans-serif; background:var(--bg); margin:0; padding:0; color:#333; }
@@ -66,14 +66,13 @@ const WE_LAYOUT = [
 
 let coaches = [], allData = {}, curCohort = 'A', curDay = 0;
 
-// ✨ 強力判定：排除一切雜訊，只認名字
-function isOccupied(cell) {
+// ✨ 嚴格判定邏輯：排除 A 欄與 B 欄的影響
+function isStudent(cell) {
   if (!cell) return false;
   let v = (cell.f || cell.v || "").toString().replace(/\s/g, "");
-  // 如果是空、橫線、不開放、長度小於2，通通不算有人
+  // 如果是空、橫線、長度小於2，通通不算有人
   const ignore = ["","-","—","──","─","_","0","不開放","null"];
-  if (v.length < 2) return false; 
-  return !ignore.includes(v);
+  return v.length >= 2 && !ignore.includes(v);
 }
 
 async function fetchJSON(gid, name) {
@@ -97,7 +96,7 @@ async function load() {
       allData[c.name] = rows;
     }));
     render();
-  } catch (e) { document.getElementById('content').innerHTML = "連線失敗"; }
+  } catch (e) { document.getElementById('content').innerHTML = "資料載入中..."; }
 }
 
 function render() {
@@ -117,12 +116,12 @@ function render() {
         const r = rows[idx];
         if (r && r.c) {
           if (!isWE) {
-            // 平日：只看當天（週一=索引2,3；週二=索引4,5...）
-            if (isOccupied(r.c[2 + (curDay * 2)])) aU++; 
-            if (isOccupied(r.c[3 + (curDay * 2)])) mU++;
+            // 平日：只看 C 到 L 欄 (索引 2 開始)
+            if (isStudent(r.c[2 + (curDay * 2)])) aU++; 
+            if (isStudent(r.c[3 + (curDay * 2)])) mU++;
           } else {
-            // 假日：目前鎖定看週六
-            if (isOccupied(r.c[2])) aU++; if (isOccupied(r.c[3])) mU++;
+            // 假日：目前看週六
+            if (isStudent(r.c[2])) aU++; if (isStudent(r.c[3])) mU++;
           }
         }
       });
