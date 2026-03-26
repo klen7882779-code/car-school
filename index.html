@@ -1,120 +1,156 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <title>第一汽車駕訓班 - 排課查詢系統</title>
-    <style>
-        body { font-family: -apple-system, sans-serif; background: #f4f4f9; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h2 { text-align: center; color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
-        .controls { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; background: #eee; padding: 15px; border-radius: 8px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: center; }
-        th { background: #007bff; color: white; }
-        .auto-tag { color: #007bff; font-weight: bold; }
-        .manual-tag { color: #dc3545; font-weight: bold; }
-        .loading { text-align: center; color: #666; padding: 20px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第一汽車駕訓班 — 智能排課系統</title>
+<style>
+    :root { --bg: #f0f2f5; --dark: #1c1e21; --primary: #0084ff; --success: #28a745; --danger: #dc3545; }
+    body { font-family: -apple-system, "Noto Sans TC", sans-serif; background: var(--bg); margin: 0; padding: 15px; color: var(--dark); }
+    .container { max-width: 1100px; margin: auto; }
+    .header { background: var(--dark); color: white; padding: 20px; border-radius: 15px; text-align: center; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .filter-box { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    select { padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 15px; min-width: 120px; outline: none; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; }
+    .coach-card { background: white; border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 6px solid var(--primary); }
+    .coach-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+    .coach-name { font-size: 18px; font-weight: bold; }
+    .class-tag { font-size: 12px; padding: 3px 8px; border-radius: 5px; background: #e7f3ff; color: var(--primary); }
+    .slot { background: #f8f9fa; padding: 10px; border-radius: 10px; margin-bottom: 8px; }
+    .time { font-size: 13px; font-weight: bold; color: #65676b; margin-bottom: 5px; }
+    .stats { display: flex; justify-content: space-between; }
+    .rem { font-weight: bold; font-size: 15px; }
+    .full { color: var(--danger); }
+    .ok { color: var(--success); }
+    .label { font-size: 12px; font-weight: bold; color: white; padding: 2px 6px; border-radius: 4px; margin-right: 5px; }
+    .l-auto { background: #007bff; }
+    .l-man { background: #6c757d; }
+    .loading { text-align: center; padding: 50px; font-size: 18px; color: #888; }
+</style>
 </head>
 <body>
 
 <div class="container">
-    <h2>第一汽車駕訓班 - 即時課表</h2>
-    <div class="controls">
-        <select id="sel-batch"><option value="A">A梯</option><option value="B" selected>B梯</option></select>
-        <select id="sel-coach"><option value="">載入教練名單中...</option></select>
+    <div class="header">
+        <h2 style="margin:0">🚗 第一汽車駕訓班</h2>
+        <div style="font-size:13px; opacity:0.8; margin-top:5px">即時剩餘名額 (每時段上限 4 位)</div>
     </div>
-    <div id="status" class="loading">正在連線 Google 試算表...</div>
-    <div id="table-area" style="display:none;">
-        <table>
-            <thead>
-                <tr>
-                    <th>時段</th><th>週一</th><th>週二</th><th>週三</th><th>週四</th><th>週五</th><th>週六</th>
-                </tr>
-            </thead>
-            <tbody id="sched-body"></tbody>
-        </table>
+
+    <div class="filter-box">
+        <select id="sel-batch"><option value="A">A 梯次</option><option value="B" selected>B 梯次</option></select>
+        <select id="sel-class">
+            <option value="全部">全部班別</option>
+            <option value="平日班">只看平日班</option>
+            <option value="假日班">只看假日班</option>
+            <option value="平日假日">平日假日皆上</option>
+        </select>
+        <button onclick="init()" style="padding:10px; border-radius:8px; border:none; background:var(--primary); color:white; cursor:pointer">重新整理</button>
     </div>
+
+    <div id="loading" class="loading">正在讀取雲端課表...</div>
+    <div id="content" class="grid"></div>
 </div>
 
 <script>
-const SPREADSHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
-const SETTING_GID = '1201782600';
+const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
+const CONFIG_GID = '1201782600';
+const CAP = 4;
 
-// 修正：完全對齊照片中的 Excel 文字
 const SLOTS = [
-    {key: '06:00 - 06:50', label: '06:00-06:50'},
-    {key: '06:50 - 07:40', label: '06:50-07:40'},
-    {key: '07:40 - 08:30', label: '07:40-08:30'},
-    {key: '08:30 - 09:20', label: '08:30-09:20'},
-    {key: '09:20 - 10:10', label: '09:20-10:10'},
-    {key: '10:10 - 11:00', label: '10:10-11:00'}
+    "06:00–08:30 早班", "08:30–11:00 第一批", "10:00–12:30 暑期加開",
+    "12:00–14:30 第二批", "13:30–16:00 暑期加開", "15:30–18:00 第三批",
+    "18:30–21:00 晚班", "19:00–21:00 第四批"
 ];
 
 let allCoaches = [];
+let coachSchedules = {};
 
-async function fetchSheet(gid, query = "select *") {
-    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&tq=${encodeURIComponent(query)}&gid=${gid}`;
-    const resp = await fetch(url);
-    const text = await resp.text();
+async function fetchSheet(gid, tq) {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&tq=${encodeURIComponent(tq)}&gid=${gid}`;
+    const res = await fetch(url);
+    const text = await res.text();
     return JSON.parse(text.substring(47, text.length - 2)).table.rows;
 }
 
 async function init() {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('content').innerHTML = '';
+    
     try {
-        const rows = await fetchSheet(SETTING_GID, "select B, C, D, E");
+        // 讀取設定：B姓名, C梯次, D班別, E-GID
+        const rows = await fetchSheet(CONFIG_GID, "select B, C, D, E");
         allCoaches = rows.map(r => ({
             name: r.c[0]?.v,
-            batch: r.c[1]?.v?.replace('梯','').trim(),
+            cohort: r.c[1]?.v?.includes('A') ? 'A' : 'B',
+            type: r.c[2]?.v || '未設定',
             gid: r.c[3]?.v
         })).filter(c => c.name && c.gid);
-        updateList();
+
+        // 並行讀取所有教練分頁
+        await Promise.all(allCoaches.map(async (c) => {
+            try {
+                coachSchedules[c.name] = await fetchSheet(c.gid, "select * offset 1");
+            } catch (e) { console.error(c.name + " 讀取失敗"); }
+        }));
+
+        document.getElementById('loading').style.display = 'none';
+        render();
     } catch (e) {
-        document.getElementById('status').innerText = "讀取設定失敗，請確認試算表已發佈且開啟權限。";
+        document.getElementById('loading').innerText = "連線失敗，請檢查網路或試算表權限。";
     }
 }
 
-function updateList() {
-    const b = document.getElementById('sel-batch').value;
-    const filtered = allCoaches.filter(c => c.batch === b);
-    const sel = document.getElementById('sel-coach');
-    sel.innerHTML = filtered.map(c => `<option value="${c.gid}">${c.name}</option>`).join('');
-    if(filtered.length > 0) loadSchedule(filtered[0].gid);
-}
+function render() {
+    const cohort = document.getElementById('sel-batch').value;
+    const typeFilter = document.getElementById('sel-class').value;
+    const container = document.getElementById('content');
+    container.innerHTML = '';
 
-async function loadSchedule(gid) {
-    document.getElementById('status').style.display = 'block';
-    document.getElementById('table-area').style.display = 'none';
-    try {
-        const rows = await fetchSheet(gid, "select * offset 1");
-        render(rows);
-        document.getElementById('status').style.display = 'none';
-        document.getElementById('table-area').style.display = 'block';
-    } catch (e) {
-        document.getElementById('status').innerText = "課表載入失敗。";
-    }
-}
+    const filtered = allCoaches.filter(c => {
+        const matchCohort = c.cohort === cohort;
+        const matchType = typeFilter === '全部' || c.type.includes(typeFilter) || (typeFilter === '平日班' && c.type === '平日假日');
+        return matchCohort && matchType;
+    });
 
-function render(rows) {
-    const tbody = document.getElementById('sched-body');
-    tbody.innerHTML = '';
-    SLOTS.forEach(slot => {
-        let tr = `<tr><td style="background:#f9f9f9;font-weight:bold">${slot.label}</td>`;
-        const rowData = rows.find(r => r.c[0]?.v === slot.key);
-        for (let i = 0; i < 6; i++) {
-            const autoV = rowData?.c[2+(i*2)]?.v || '';
-            const manualV = rowData?.c[3+(i*2)]?.v || '';
-            tr += `<td>`;
-            if(autoV) tr += `<div class="auto-tag">自: ${autoV}</div>`;
-            if(manualV) tr += `<div class="manual-tag">手: ${manualV}</div>`;
-            tr += `</td>`;
-        }
-        tbody.innerHTML += tr + `</tr>`;
+    filtered.forEach(coach => {
+        let html = `<div class="coach-card">
+            <div class="coach-header">
+                <span class="coach-name">${coach.name} 教練</span>
+                <span class="class-tag">${coach.type}</span>
+            </div>`;
+        
+        const data = coachSchedules[coach.name] || [];
+        
+        SLOTS.forEach(timeKey => {
+            const row = data.find(r => r.c[0]?.v && r.c[0].v.includes(timeKey));
+            let autoCount = 0, manualCount = 0;
+            if (row) {
+                // 檢查週一到週五的自排(2,4,6,8,10)與手排(3,5,7,9,11)
+                for (let i = 0; i < 5; i++) {
+                    if (row.c[2+(i*2)]?.v) autoCount++;
+                    if (row.c[3+(i*2)]?.v) manualCount++;
+                }
+            }
+            const aRem = Math.max(0, CAP - autoCount);
+            const mRem = Math.max(0, CAP - manualCount);
+
+            html += `
+                <div class="slot">
+                    <div class="time">🕒 ${timeKey}</div>
+                    <div class="stats">
+                        <span><span class="label l-auto">自</span> <span class="rem ${aRem===0?'full':'ok'}">${aRem===0?'滿':'剩 '+aRem}</span></span>
+                        <span><span class="label l-man">手</span> <span class="rem ${mRem===0?'full':'ok'}">${mRem===0?'滿':'剩 '+mRem}</span></span>
+                    </div>
+                </div>`;
+        });
+        html += `</div>`;
+        container.innerHTML += html;
     });
 }
 
-document.getElementById('sel-batch').onchange = updateList;
-document.getElementById('sel-coach').onchange = (e) => loadSchedule(e.target.value);
+document.getElementById('sel-batch').onchange = render;
+document.getElementById('sel-class').onchange = render;
+
 init();
 </script>
 </body>
