@@ -2,52 +2,52 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>第一汽車駕訓班 — 每日名額查詢</title>
+<title>第一駕訓班 — 最終精準版</title>
 <style>
   :root { --p:#1A1916; --acc:#27ae60; --bg:#F4F3EF; --c:#FFF; --b:#E0DDD5; }
   body { font-family:sans-serif; background:var(--bg); margin:0; padding:0; color:#333; }
-  .header { background:var(--p); color:#fff; padding:15px; text-align:center; position:sticky; top:0; z-index:100; }
-  .controls { background:var(--c); padding:10px; border-bottom:1px solid var(--b); display:flex; flex-direction:column; align-items:center; gap:8px; position:sticky; top:60px; z-index:90; }
-  .btn-group { display:flex; gap:5px; flex-wrap:wrap; justify-content:center; }
-  .pill { padding:5px 12px; border-radius:15px; border:1px solid var(--b); background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
-  .pill.active { background:var(--p); color:#fff; border-color:var(--p); }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px; padding:15px; max-width:1100px; margin:auto; }
-  .card { background:var(--c); border:1px solid var(--b); border-radius:12px; padding:15px; border-top:5px solid var(--acc); box-shadow:0 2px 8px rgba(0,0,0,0.05); }
-  .coach-t { font-size:16px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:10px; }
-  .slot { background:#f9f9f9; padding:8px; border-radius:8px; margin-bottom:6px; }
-  .slot-time { font-size:11px; font-weight:bold; color:#666; margin-bottom:4px; display:block; }
-  .stat { display:flex; justify-content:space-between; }
-  .rem { font-weight:bold; font-size:14px; }
-  .rem-ok { color:#27ae60; }
-  .rem-full { color:#e74c3c; font-weight:900; }
-  .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; }
+  .header { background:var(--p); color:#fff; padding:15px; text-align:center; }
+  .controls { background:var(--c); padding:10px; border-bottom:1px solid var(--b); text-align:center; position:sticky; top:0; z-index:100; }
+  .group { margin-bottom: 8px; display: flex; justify-content: center; gap: 5px; flex-wrap: wrap; }
+  .pill { padding:6px 12px; border-radius:15px; border:1px solid var(--b); background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
+  .pill.active { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px; padding:15px; }
+  .card { background:var(--c); border-radius:12px; padding:15px; border-top:5px solid var(--p); box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+  .coach-t { font-size:17px; font-weight:bold; margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:5px; }
+  .slot { background:#f9f9f9; padding:8px; border-radius:8px; margin-bottom:6px; font-size:13px; }
+  .stat { display:flex; justify-content:space-between; margin-top:4px; }
+  .rem { font-weight:bold; }
+  .ok { color:var(--acc); }
+  .full { color:#e74c3c; font-weight:bold; }
+  .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:4px; }
 </style>
 </head>
 <body>
-<div class="header"><h2 style="margin:0">🚗 第一駕訓班 — 每日名額</h2></div>
+
+<div class="header"><h2 style="margin:0">🚗 第一汽車駕訓班 — 名額查詢</h2></div>
 
 <div class="controls">
-  <div class="btn-group">
-    <button class="pill active" id="bA" onclick="sw('cohort','A')">A 梯</button>
-    <button class="pill" id="bB" onclick="sw('cohort','B')">B 梯</button>
+  <div class="group">
+    <button class="pill active" id="cA" onclick="sw('cohort','A')">A 梯次</button>
+    <button class="pill" id="cB" onclick="sw('cohort','B')">B 梯次</button>
   </div>
-  <div class="btn-group" id="day-selector">
+  <div class="group">
     <button class="pill active" id="d0" onclick="sw('day',0)">週一</button>
     <button class="pill" id="d1" onclick="sw('day',1)">週二</button>
     <button class="pill" id="d2" onclick="sw('day',2)">週三</button>
     <button class="pill" id="d3" onclick="sw('day',3)">週四</button>
     <button class="pill" id="d4" onclick="sw('day',4)">週五</button>
-    <button class="pill" id="d5" onclick="sw('day','WE')">假日</button>
+    <button class="pill" id="dWE" onclick="sw('day','WE')">假日</button>
   </div>
 </div>
 
-<div id="content"></div>
+<div id="content" class="grid"></div>
 
 <script>
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
 
-// 物理座標鎖定 (行號)
+// 鎖定 Excel 行號 (索引 = 行號-1)
 const WD_LAYOUT = [
   { label: '06:00–08:30 早班', rows: [3, 4, 5, 6] },
   { label: '08:30–11:00 第一批', rows: [11, 12, 13, 14] },
@@ -64,17 +64,21 @@ const WE_LAYOUT = [
   { label: '13:30–17:30 假日下午', rows: [69, 70, 71, 72] }
 ];
 
-let coaches = [], allData = {}, curCohort = 'A', curDay = 0; // 0=週一
+let coaches = [], allData = {}, curCohort = 'A', curDay = 0;
 
-function isName(cell) {
+// ✨ 強力判定：排除一切雜訊，只認名字
+function isOccupied(cell) {
   if (!cell) return false;
   let v = (cell.f || cell.v || "").toString().replace(/\s/g, "");
-  return v.length >= 2 && !["","-","—","──","─","_","0",".","。","null","不開放"].includes(v);
+  // 如果是空、橫線、不開放、長度小於2，通通不算有人
+  const ignore = ["","-","—","──","─","_","0","不開放","null"];
+  if (v.length < 2) return false; 
+  return !ignore.includes(v);
 }
 
-async function fetchSheet(gid, name) {
+async function fetchJSON(gid, name) {
   let url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}`;
-  if(name) url += `&sheet=${encodeURIComponent(name)}`;
+  if(name) url += `&sheet=${encodeURIComponent(name)}&range=A1:L80`;
   const res = await fetch(url);
   const text = await res.text();
   return JSON.parse(text.substring(47, text.length - 2)).table.rows;
@@ -82,67 +86,63 @@ async function fetchSheet(gid, name) {
 
 async function load() {
   try {
-    const cfg = await fetchSheet(CONFIG_GID);
+    const cfg = await fetchJSON(CONFIG_GID);
     coaches = cfg.map(r => ({
       name: (r.c[1]?.v || "").toString().trim(),
       cohort: (r.c[2]?.v || "").toString().includes('A') ? 'A' : 'B'
     })).filter(c => c.name && c.name !== "教練姓名");
 
     await Promise.all(coaches.map(async (c) => {
-      const rows = await fetchSheet(null, c.name);
+      const rows = await fetchJSON(null, c.name);
       allData[c.name] = rows;
     }));
     render();
-  } catch (e) { console.error(e); }
+  } catch (e) { document.getElementById('content').innerHTML = "連線失敗"; }
 }
 
 function render() {
   const isWE = curDay === 'WE';
   const layout = isWE ? WE_LAYOUT : WD_LAYOUT;
   const filtered = coaches.filter(c => c.cohort === curCohort);
-  let html = '<div class="grid">';
+  const container = document.getElementById('content');
+  container.innerHTML = '';
 
   filtered.forEach(c => {
     const rows = allData[c.name] || [];
     let slotsHtml = '';
+    
     layout.forEach(s => {
       let aU = 0, mU = 0;
       s.rows.forEach(idx => {
         const r = rows[idx];
         if (r && r.c) {
-          // 如果是平日，根據 curDay (0-4) 決定看哪一欄
-          // 如果是假日， curDay 為 WE，我們看週六(d=0)跟週日(d=1)
           if (!isWE) {
-            if (isName(r.c[2 + (curDay * 2)])) aU++; 
-            if (isName(r.c[3 + (curDay * 2)])) mU++;
+            // 平日：只看當天（週一=索引2,3；週二=索引4,5...）
+            if (isOccupied(r.c[2 + (curDay * 2)])) aU++; 
+            if (isOccupied(r.c[3 + (curDay * 2)])) mU++;
           } else {
-            // 假日邏輯：這裡暫定顯示週六(d=0)名額
-            if (isName(r.c[2])) aU++; if (isName(r.c[3])) mU++;
+            // 假日：目前鎖定看週六
+            if (isOccupied(r.c[2])) aU++; if (isOccupied(r.c[3])) mU++;
           }
         }
       });
       const aR = 4 - aU, mR = 4 - mU;
-      slotsHtml += `<div class="slot"><span class="slot-time">${s.label}</span><div class="stat">
-        <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR<=0?'rem-full':'rem-ok'}">${aR<=0?'滿':'剩 '+aR}</span></span>
-        <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR<=0?'rem-full':'rem-ok'}">${mR<=0?'滿':'剩 '+mR}</span></span>
+      slotsHtml += `<div class="slot"><b>${s.label}</b><div class="stat">
+        <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR<=0?'full':'ok'}">${aR<=0?'滿':'剩 '+aR}</span></span>
+        <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR<=0?'full':'ok'}">${mR<=0?'滿':'剩 '+mR}</span></span>
       </div></div>`;
     });
-    html += `<div class="card"><div class="coach-t">👤 ${c.name}</div>${slotsHtml}</div>`;
+    container.innerHTML += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
   });
-  document.getElementById('content').innerHTML = html + '</div>';
 }
 
 function sw(type, val) {
-  if (type === 'cohort') curCohort = val;
-  else curDay = val;
-  
-  // 更新按鈕樣式
+  if (type === 'cohort') curCohort = val; else curDay = val;
   document.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
-  document.getElementById('b' + curCohort).classList.add('active');
+  document.getElementById('c' + curCohort).classList.add('active');
   document.getElementById('d' + curDay).classList.add('active');
   render();
 }
-
 load();
 </script>
 </body>
