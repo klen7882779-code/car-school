@@ -31,13 +31,13 @@
   <button class="pill active" id="btnWD" onclick="sw('day','WD')">平日</button>
   <button class="pill" id="btnWE" onclick="sw('day','WE')">假日</button>
 </div>
-<div id="content"><div style="text-align:center;padding:50px;color:#999">資料載入中...</div></div>
+<div id="content"></div>
 
 <script>
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
 
-// 鎖定 Excel 物理行數
+// 絕對行數座標
 const WD_LAYOUT = [
   { label: '06:00–08:30 早班', rows: [3, 4, 5, 6] },
   { label: '08:30–11:00 第一批', rows: [11, 12, 13, 14] },
@@ -48,6 +48,7 @@ const WD_LAYOUT = [
   { label: '18:30–21:00 晚班', rows: [43, 44, 45, 46] },
   { label: '19:00–21:00 第四批', rows: [51, 52, 53, 54] }
 ];
+
 const WE_LAYOUT = [
   { label: '08:30–12:30 假日上午', rows: [61, 62, 63, 64] },
   { label: '13:30–17:30 假日下午', rows: [69, 70, 71, 72] }
@@ -55,51 +56,47 @@ const WE_LAYOUT = [
 
 let coaches = [], allData = {}, cohort = 'A', dayType = 'WD';
 
-async function fetchJSON(gid, sheetName, range) {
-  let url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
-  if (gid) url += `&gid=${gid}`;
-  if (sheetName) url += `&sheet=${encodeURIComponent(sheetName)}`;
-  if (range) url += `&range=${range}`;
+// ✨ 終極判定邏輯：排除所有不可見字元與符號
+function isOccupied(cell) {
+  if (!cell) return false;
+  // 取得格子的文字內容並徹底清理空白
+  let val = (cell.f || cell.v || "").toString().replace(/\s/g, "");
+  
+  // 1. 如果完全沒字，不算人
+  if (val.length === 0) return false;
+  
+  // 2. 如果只有一個字，且是常見符號（橫線、點、0），不算人
+  const symbols = ["-", "—", "──", "─", "_", "0", ".", "。", "null"];
+  if (symbols.includes(val)) return false;
+  
+  // 3. 如果字數太少（只有1個字），且不是中文字，也不算人（防止雜訊）
+  if (val.length < 2 && !/[\u4E00-\u9FFF]/.test(val)) return false;
+
+  // 剩下長度 >= 2 或 是中文字的，就判定為「人名」或「不開放」
+  return true;
+}
+
+async function fetchJSON(gid, name) {
+  let url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}`;
+  if(name) url += `&sheet=${encodeURIComponent(name)}`;
   const res = await fetch(url);
   const text = await res.text();
   return JSON.parse(text.substring(47, text.length - 2)).table.rows;
 }
 
-// 🛡️ 究極偵測函數：排除一切非姓名內容
-function isRealName(cell) {
-  if (!cell || cell.v === null || cell.v === undefined) return false;
-  
-  // 取得顯示的文字內容並移除所有空白
-  let val = (cell.f || cell.v || "").toString().replace(/\s/g, "");
-  
-  // 1. 如果長度小於 2，且不是特定的單字名，通常不是姓名
-  if (val.length === 0) return false;
-  
-  // 2. 排除掉所有的符號、數字
-  const ignoreList = ["-", "—", "──", "─", "_", "0", "None", "null", "undefined", ".", "。"];
-  if (ignoreList.includes(val)) return false;
-  
-  // 3. 額外檢查：如果內容只包含符號或空格，也不算
-  if (/^[ \-—─0]+$/.test(val)) return false;
-
-  return true; 
-}
-
 async function load() {
   try {
-    const cfgRows = await fetchJSON(CONFIG_GID, null, "B2:F100");
-    coaches = cfgRows.map(r => ({
-      name: (r.c[0]?.v || "").toString().trim(),
-      cohort: (r.c[1]?.v || "").toString().includes('A') ? 'A' : 'B',
-      type: (r.c[2]?.v || 'WDWE').toString().toUpperCase(),
-      cap: parseInt(r.c[4]?.v) || 4 
-    })).filter(c => c.name !== "");
+    const cfg = await fetchJSON(CONFIG_GID);
+    coaches = cfg.map(r => ({
+      name: (r.c[1]?.v || "").toString().trim(),
+      cohort: (r.c[2]?.v || "").toString().includes('A') ? 'A' : 'B',
+      type: (r.c[3]?.v || 'WDWE').toString().toUpperCase(),
+      cap: 4 
+    })).filter(c => c.name && c.name !== "教練姓名");
 
     await Promise.all(coaches.map(async (c) => {
-      try {
-        const rows = await fetchJSON(null, c.name, "A1:L80");
-        allData[c.name] = rows;
-      } catch (e) { console.error(c.name); }
+      const rows = await fetchJSON(null, c.name);
+      allData[c.name] = rows;
     }));
     render();
   } catch (e) { console.error(e); }
@@ -108,10 +105,8 @@ async function load() {
 function render() {
   const layout = dayType === 'WD' ? WD_LAYOUT : WE_LAYOUT;
   const filtered = coaches.filter(c => c.cohort === cohort && c.type.includes(dayType));
-  const container = document.getElementById('content');
-  container.innerHTML = '';
-
   let html = '<div class="grid">';
+
   filtered.forEach(c => {
     const rows = allData[c.name] || [];
     let slotsHtml = '';
@@ -120,31 +115,33 @@ function render() {
       s.rows.forEach(idx => {
         const r = rows[idx];
         if (r && r.c) {
+          // 檢查平日 5 天或假日 2 天是否有文字
           const days = dayType === 'WD' ? 5 : 2;
           for (let d = 0; d < days; d++) {
-            if (isRealName(r.c[2 + (d * 2)])) aUsed++;
-            if (isRealName(r.c[3 + (d * 2)])) mUsed++;
+            if (isOccupied(r.c[2 + (d * 2)])) { aUsed++; break; } // 同一位置(行)有人就算佔用
+          }
+          for (let d = 0; d < days; d++) {
+            if (isOccupied(r.c[3 + (d * 2)])) { mUsed++; break; }
           }
         }
       });
       const aR = Math.max(0, c.cap - aUsed), mR = Math.max(0, c.cap - mUsed);
       slotsHtml += `<div class="slot"><span class="slot-time">🕒 ${s.label}</span><div class="stat">
-        <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'已滿':'剩 '+aR}</span></span>
-        <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'已滿':'剩 '+mR}</span></span>
+        <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'滿':'剩 '+aR}</span></span>
+        <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'滿':'剩 '+mR}</span></span>
       </div></div>`;
     });
     html += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
   });
-  container.innerHTML = html + '</div>';
+  document.getElementById('content').innerHTML = html + '</div>';
 }
 
-function sw(k,v){ 
-  if(k==='cohort') cohort=v; else dayType=v;
+function sw(k,v){ if(k==='cohort') cohort=v; else dayType=v; 
   document.getElementById('btnA').className = 'pill' + (cohort==='A'?' active':'');
   document.getElementById('btnB').className = 'pill' + (cohort==='B'?' active':'');
   document.getElementById('btnWD').className = 'pill' + (dayType==='WD'?' active':'');
   document.getElementById('btnWE').className = 'pill' + (dayType==='WE'?' active':'');
-  render();
+  render(); 
 }
 load();
 </script>
