@@ -3,156 +3,179 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>第一汽車駕訓班 — 即時課表查詢</title>
+<title>第一汽車駕訓班 — 名額即時查詢</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-    :root { --bg: #f5f7fa; --primary: #2c3e50; --accent: #1abc9c; --auto: #3498db; --man: #e67e22; }
-    body { font-family: "PingFang TC", sans-serif; background: var(--bg); margin: 0; padding: 15px; color: #333; }
-    .container { max-width: 1100px; margin: auto; }
-    .header { background: var(--primary); color: white; padding: 15px; border-radius: 12px; text-align: center; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    .controls { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 15px; background: white; padding: 15px; border-radius: 12px; }
-    select { padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 16px; outline: none; min-width: 140px; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; }
-    .card { background: white; border-radius: 15px; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 5px solid var(--accent); }
-    .card-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
-    .coach-name { font-size: 18px; font-weight: bold; }
-    .type-tag { font-size: 12px; background: #e0f2f1; color: #00796b; padding: 2px 8px; border-radius: 4px; }
-    .slot { background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 8px; }
-    .slot-time { font-size: 13px; font-weight: bold; color: #7f8c8d; margin-bottom: 5px; }
-    .stats { display: flex; justify-content: space-between; align-items: center; }
-    .label { font-size: 12px; padding: 2px 6px; border-radius: 4px; color: white; margin-right: 5px; }
-    .l-auto { background: var(--auto); }
-    .l-man { background: var(--man); }
-    .rem { font-weight: bold; }
-    .full { color: #e74c3c; }
-    .ok { color: #27ae60; }
-    .loading { text-align: center; padding: 50px; font-size: 18px; color: #95a5a6; }
+  :root { --primary: #1A1916; --accent: #27ae60; --bg: #F4F3EF; --card: #FFF; --border: #E0DDD5; }
+  body { font-family: 'Noto Sans TC', sans-serif; background: var(--bg); color: #333; margin: 0; padding: 0; }
+  .header { background: var(--primary); color: white; padding: 20px; text-align: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+  .controls { background: var(--card); padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: center; gap: 10px; position: sticky; top: 75px; z-index: 90; }
+  .pill { padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border); background: white; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .pill.active { background: var(--primary); color: white; border-color: var(--primary); }
+  .main { max-width: 1100px; margin: 20px auto; padding: 0 15px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 15px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border-top: 5px solid var(--accent); }
+  .coach-title { font-size: 18px; font-weight: 700; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; }
+  .tag { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #eee; }
+  .slot { background: #f9f9f9; padding: 10px; border-radius: 8px; margin-bottom: 8px; }
+  .slot-time { font-size: 12px; font-weight: 700; color: #666; margin-bottom: 5px; }
+  .status-row { display: flex; justify-content: space-between; align-items: center; }
+  .rem-box { font-size: 14px; font-weight: bold; }
+  .rem-full { color: #c0392b; }
+  .rem-ok { color: #27ae60; }
+  .loading { text-align: center; padding: 50px; color: #888; font-style: italic; }
+  .diag-bar { font-size: 11px; color: #999; text-align: center; margin-bottom: 10px; }
 </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="header">
-        <h2 style="margin:0">🚗 第一汽車駕訓班課表</h2>
-        <div style="font-size:12px; opacity:0.8; margin-top:5px">即時同步 Google 試算表 (每時段上限 4 位)</div>
-    </div>
+<div class="header">
+  <h2 style="margin:0">🚗 第一汽車駕訓班</h2>
+  <div style="font-size:12px; opacity:0.7; margin-top:5px">招生名額即時查 (自動同步 Excel)</div>
+</div>
 
-    <div class="controls">
-        <select id="sel-batch"><option value="A">A 梯次</option><option value="B" selected>B 梯次</option></select>
-        <select id="sel-class">
-            <option value="全部">全部班別</option>
-            <option value="平日班">平日班</option>
-            <option value="假日班">假日班</option>
-            <option value="平日假日">平日假日皆有</option>
-        </select>
-        <button onclick="init()" style="background:var(--accent); color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer">刷新資料</button>
-    </div>
+<div class="controls">
+  <button class="pill active" id="btnA" onclick="sw('cohort','A')">A 梯次</button>
+  <button class="pill" id="btnB" onclick="sw('cohort','B')">B 梯次</button>
+  <div style="width:1px; background:#ddd; height:25px; margin:0 5px"></div>
+  <button class="pill active" id="btnWD" onclick="sw('day','WD')">平日</button>
+  <button class="pill" id="btnWE" onclick="sw('day','WE')">假日</button>
+</div>
 
-    <div id="loading" class="loading">正在連線至雲端資料庫...</div>
-    <div id="content" class="grid"></div>
+<div class="main">
+  <div id="diag" class="diag-bar">初始化中...</div>
+  <div id="content"><div class="loading">正在連線至 Google 試算表...</div></div>
 </div>
 
 <script>
-const SPREADSHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
-const CONFIG_GID = '1565459234'; // 您提供的最新設定頁 GID
-const LIMIT = 4;
+const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
+const CONFIG_GID = '1565459234'; // 設定頁 GID
 
-const TIME_SLOTS = [
-    "06:00–08:30 早班", "08:30–11:00 第一批", "10:00–12:30 暑期加開",
-    "12:00–14:30 第二批", "13:30–16:00 暑期加開", "15:30–18:00 第三批",
-    "18:30–21:00 晚班", "19:00–21:00 第四批"
+// 時段定義對齊截圖
+const WD_SLOTS = [
+  {key:'06:00', label:'06:00–08:30 早班'},
+  {key:'08:30–11:00', label:'08:30–11:00 第一批'},
+  {key:'10:00', label:'10:00–12:30 暑期A'},
+  {key:'12:00', label:'12:00–14:30 第二批'},
+  {key:'13:30', label:'13:30–16:00 暑期B'},
+  {key:'15:30', label:'15:30–18:00 第三批'},
+  {key:'18:30', label:'18:30–21:00 晚班'},
+  {key:'19:00', label:'19:00–21:00 第四批'}
+];
+const WE_SLOTS = [
+  {key:'08:30–12:30', label:'08:30–12:30 假日上午'},
+  {key:'13:30–17:30', label:'13:30–17:30 假日下午'}
 ];
 
-let coaches = [];
-let allSchedules = {};
+let coaches = [], allData = {}, cohort = 'A', dayType = 'WD';
 
-async function fetchAPI(gid, sql) {
-    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&tq=${encodeURIComponent(sql)}&gid=${gid}`;
-    const resp = await fetch(url);
-    const text = await resp.text();
-    return JSON.parse(text.substring(47, text.length - 2)).table.rows;
+async function fetchJSON(gid, tq = "select *") {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&tq=${encodeURIComponent(tq)}&gid=${gid}`;
+  const res = await fetch(url);
+  const text = await res.text();
+  return JSON.parse(text.substring(47, text.length - 2)).table.rows;
 }
 
-async function init() {
-    document.getElementById('loading').style.display = 'block';
-    document.getElementById('content').innerHTML = '';
-    try {
-        // 從設定頁讀取教練配置
-        const rows = await fetchAPI(CONFIG_GID, "select B, C, D, E");
-        coaches = rows.map(r => ({
-            name: r.c[0]?.v,
-            cohort: r.c[1]?.v?.includes('A') ? 'A' : 'B',
-            type: r.c[2]?.v || '未設定',
-            gid: r.c[3]?.v
-        })).filter(c => c.name && c.gid);
+async function load() {
+  const diag = document.getElementById('diag');
+  try {
+    diag.textContent = "🔍 讀取設定中...";
+    // 修改抓取範圍，適應您的表格結構
+    const cfgRows = await fetchJSON(CONFIG_GID, "select B, C, D, F");
+    
+    coaches = cfgRows.map(r => ({
+      name: String(r.c[0]?.v || '').trim(),
+      cohort: String(r.c[1]?.v || '').toUpperCase().includes('A') ? 'A' : 'B',
+      type: String(r.c[2]?.v || 'WDWE'),
+      cap: parseInt(r.c[3]?.v) || 4
+    })).filter(c => c.name && c.name !== '教練姓名');
 
-        // 同步抓取所有教練分頁資料
-        await Promise.all(coaches.map(async (c) => {
-            try {
-                allSchedules[c.name] = await fetchAPI(c.gid, "select * offset 1");
-            } catch (e) { console.error(c.name + " 載入失敗"); }
-        }));
+    diag.textContent = `✅ 找到 ${coaches.length} 位教練，讀取課表中...`;
 
-        document.getElementById('loading').style.display = 'none';
-        render();
-    } catch (e) {
-        document.getElementById('loading').innerText = "⚠️ 連線失敗！請確認試算表已開啟「發佈到網路」。";
-    }
+    // 平行抓取所有教練資料
+    await Promise.all(coaches.map(async (c) => {
+      try {
+        // 使用 range 確保抓取完整 A-L 欄資料
+        const res = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(c.name)}&range=A1:L50`);
+        const text = await res.text();
+        const rows = JSON.parse(text.substring(47, text.length - 2)).table.rows;
+        allData[c.name] = rows.map(r => (r.c||[]).map(cell => String(cell?.v ?? '').trim()));
+      } catch(e) { console.error(c.name, e); }
+    }));
+
+    diag.textContent = `最後更新：${new Date().toLocaleTimeString()}`;
+    render();
+  } catch(e) {
+    diag.textContent = "❌ 資料讀取失敗，請確認試算表已發佈。";
+    document.getElementById('content').innerHTML = `<div class="loading">連線失敗，請檢查網路或權限。</div>`;
+  }
+}
+
+function sw(k, v) {
+  if(k==='cohort') cohort=v; else dayType=v;
+  document.getElementById('btnA').className = 'pill' + (cohort==='A'?' active':'');
+  document.getElementById('btnB').className = 'pill' + (cohort==='B'?' active':'');
+  document.getElementById('btnWD').className = 'pill' + (dayType==='WD'?' active':'');
+  document.getElementById('btnWE').className = 'pill' + (dayType==='WE'?' active':'');
+  render();
 }
 
 function render() {
-    const batch = document.getElementById('sel-batch').value;
-    const type = document.getElementById('sel-class').value;
-    const container = document.getElementById('content');
-    container.innerHTML = '';
+  const slots = dayType === 'WD' ? WD_SLOTS : WE_SLOTS;
+  const targetCoaches = coaches.filter(c => {
+    if(c.cohort !== cohort) return false;
+    const t = c.type.toUpperCase();
+    return dayType === 'WD' ? t.includes('WD') : t.includes('WE');
+  });
 
-    const filtered = coaches.filter(c => {
-        const batchMatch = c.cohort === batch;
-        const typeMatch = (type === '全部') || (c.type.includes(type)) || (type === '平日班' && c.type === '平日假日');
-        return batchMatch && typeMatch;
+  if(!targetCoaches.length) {
+    document.getElementById('content').innerHTML = `<div class="loading">此梯次目前無教練資料。</div>`;
+    return;
+  }
+
+  let html = '<div class="grid">';
+  targetCoaches.forEach(c => {
+    let slotRows = '';
+    const grid = allData[c.name] || [];
+    
+    slots.forEach(s => {
+      // 根據時段 key 找對應列
+      const row = grid.find(r => r[0] && r[0].includes(s.key));
+      let autoCount = 0, manCount = 0;
+      if(row) {
+        // 自排在 2,4,6,8,10 欄；手排在 3,5,7,9,11 欄
+        for(let i=0; i<5; i++) {
+          if(row[2+(i*2)] && row[2+(i*2)] !== '—') autoCount++;
+          if(row[3+(i*2)] && row[3+(i*2)] !== '—') manCount++;
+        }
+      }
+      
+      const aRem = Math.max(0, c.cap - autoCount);
+      const mRem = Math.max(0, c.cap - manCount);
+      
+      slotRows += `
+        <div class="slot">
+          <div class="slot-time">${s.label}</div>
+          <div class="status-row">
+            <div class="rem-box">自排 <span class="${aRem===0?'rem-full':'rem-ok'}">${aRem===0?'滿':('剩'+aRem)}</span></div>
+            <div class="rem-box">手排 <span class="${mRem===0?'rem-full':'rem-ok'}">${mRem===0?'滿':('剩'+mRem)}</span></div>
+          </div>
+        </div>`;
     });
 
-    filtered.forEach(coach => {
-        let html = `<div class="card">
-            <div class="card-title">
-                <span class="coach-name">${coach.name} 教練</span>
-                <span class="type-tag">${coach.type}</span>
-            </div>`;
-        
-        const data = allSchedules[coach.name] || [];
-        
-        TIME_SLOTS.forEach(timeKey => {
-            const row = data.find(r => r.c[0]?.v && r.c[0].v.includes(timeKey.split(' ')[0]));
-            let aCount = 0, mCount = 0;
-            
-            if (row) {
-                // 檢查週一到週五的自排與手排欄位
-                for (let i = 0; i < 5; i++) {
-                    if (row.c[2 + (i * 2)]?.v) aCount++;
-                    if (row.c[3 + (i * 2)]?.v) mCount++;
-                }
-            }
-            
-            const aRem = Math.max(0, LIMIT - aCount);
-            const mRem = Math.max(0, LIMIT - mCount);
-
-            html += `<div class="slot">
-                <div class="slot-time">🕒 ${timeKey}</div>
-                <div class="stats">
-                    <span><span class="label l-auto">自</span> <span class="rem ${aRem===0?'full':'ok'}">${aRem===0?'滿':'剩 '+aRem}</span></span>
-                    <span><span class="label l-man">手</span> <span class="rem ${mRem===0?'full':'ok'}">${mRem===0?'滿':'剩 '+mRem}</span></span>
-                </div>
-            </div>`;
-        });
-        
-        html += `</div>`;
-        container.innerHTML += html;
-    });
+    html += `
+      <div class="card">
+        <div class="coach-title">
+          <span>${c.name} 教練</span>
+          <span class="tag">${c.cohort}梯 / ${dayType==='WD'?'平日':'假日'}</span>
+        </div>
+        ${slotRows}
+      </div>`;
+  });
+  document.getElementById('content').innerHTML = html + '</div>';
 }
 
-document.getElementById('sel-batch').onchange = render;
-document.getElementById('sel-class').onchange = render;
-
-init();
+load();
 </script>
 </body>
 </html>
