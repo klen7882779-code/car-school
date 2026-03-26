@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>第一汽車駕訓班 — 即時名額</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第一汽車駕訓班 — 名額查詢系統</title>
 <style>
   :root { --p:#1A1916; --acc:#27ae60; --bg:#F4F3EF; --c:#FFF; --b:#E0DDD5; }
   body { font-family:sans-serif; background:var(--bg); margin:0; padding:0; color:#333; }
@@ -11,10 +10,9 @@
   .controls { background:var(--c); padding:12px; border-bottom:1px solid var(--b); display:flex; justify-content:center; gap:8px; position:sticky; top:65px; z-index:90; }
   .pill { padding:6px 14px; border-radius:20px; border:1px solid var(--b); background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
   .pill.active { background:var(--p); color:#fff; border-color:var(--p); }
-  .main { max-width:1100px; margin:20px auto; padding:0 12px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px; padding:15px; max-width:1100px; margin:auto; }
   .card { background:var(--c); border:1px solid var(--b); border-radius:12px; padding:15px; border-top:5px solid var(--acc); }
-  .coach-t { font-size:16px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; display:flex; justify-content:space-between; }
+  .coach-t { font-size:16px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; }
   .slot { background:#f9f9f9; padding:10px; border-radius:8px; margin-bottom:8px; }
   .slot-time { font-size:11px; font-weight:bold; color:#666; margin-bottom:6px; display:block; }
   .stat { display:flex; justify-content:space-between; }
@@ -37,12 +35,11 @@
   <button class="pill" id="btnWE" onclick="sw('day','WE')">假日</button>
 </div>
 
-<div class="main"><div id="content"><div class="loading">資料同步中...</div></div></div>
+<div id="content"><div class="loading">正在抓取最新資料...</div></div>
 
 <script>
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
-
 const WD_SLOTS = [
   {k:'06:00', l:'06:00–08:30 早班'}, {k:'08:30', l:'08:30–11:00 第一批'},
   {k:'10:00', l:'10:00–12:30 暑期A'}, {k:'12:00', l:'12:00–14:30 第二批'},
@@ -55,35 +52,39 @@ const WE_SLOTS = [
 
 let coaches = [], allData = {}, cohort = 'A', dayType = 'WD';
 
-async function fetchJSON(gid, tq = "select *") {
+async function fetchSheet(gid, tq) {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&tq=${encodeURIComponent(tq)}&gid=${gid}`;
   const res = await fetch(url);
   const text = await res.text();
-  return JSON.parse(text.substring(47, text.length - 2)).table.rows;
+  const json = JSON.parse(text.substring(47, text.length - 2));
+  return json.table.rows;
 }
 
 async function load() {
   try {
-    const cfgRows = await fetchJSON(CONFIG_GID, "select B, C, D, F");
+    const cfgRows = await fetchSheet(CONFIG_GID, "select B, C, D, F");
     coaches = cfgRows.map(r => ({
-      name: String(r.c[0]?.v || '').trim(),
-      cohort: String(r.c[1]?.v || '').toUpperCase().includes('A') ? 'A' : 'B',
-      type: String(r.c[2]?.v || 'WDWE').toUpperCase(),
+      name: (r.c[0]?.v || '').toString().trim(),
+      cohort: (r.c[1]?.v || '').toString().includes('A') ? 'A' : 'B',
+      type: (r.c[2]?.v || 'WDWE').toString().toUpperCase(),
       cap: parseInt(r.c[3]?.v) || 4
     })).filter(c => c.name && c.name !== '教練姓名');
 
     await Promise.all(coaches.map(async (c) => {
       try {
-        const rows = await fetchJSON(0, `select * where A is not null label A ''`); // 這裡會動態抓取
         const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(c.name)}&range=A1:L50`;
         const res = await fetch(url);
         const text = await res.text();
-        const data = JSON.parse(text.substring(47, text.length - 2)).table.rows;
-        allData[c.name] = data.map(r => (r.c || []).map(cell => String(cell?.v || cell?.f || '').trim()));
+        const rows = JSON.parse(text.substring(47, text.length - 2)).table.rows;
+        // 把每一格都轉成純文字並去掉空格
+        allData[c.name] = rows.map(r => (r.c || []).map(cell => {
+           const val = cell?.f || cell?.v || '';
+           return val.toString().trim();
+        }));
       } catch (e) { console.error(c.name); }
     }));
     render();
-  } catch (e) { document.getElementById('content').innerHTML = '讀取失敗，請確認試算表已發佈。'; }
+  } catch (e) { document.getElementById('content').innerHTML = '讀取失敗，請確認已發佈到網路。'; }
 }
 
 function sw(k, v) {
@@ -107,13 +108,14 @@ function render() {
       const row = grid.find(r => r[0] && r[0].includes(s.k));
       let aUsed = 0, mUsed = 0;
       if (row) {
-        // 核心邏輯：只檢查 C 到 L 欄 (索引 2 到 11)
         const days = dayType === 'WD' ? 5 : 2; 
         for (let i = 0; i < days; i++) {
           const aV = row[2 + (i * 2)], mV = row[3 + (i * 2)];
-          // 只要有字，且不是底線或 0，就算佔位
-          if (aV && aV !== '—' && aV !== '0' && aV !== '') aUsed++;
-          if (mV && mV !== '—' && mV !== '0' && mV !== '') mUsed++;
+          
+          // --- 核心偵測邏輯升級 ---
+          // 只要不是空的、不是 '-'、不是 '—'、長度大於 0 就扣除
+          if (aV && aV !== "" && aV !== "-" && aV !== "—") aUsed++;
+          if (mV && mV !== "" && mV !== "-" && mV !== "—") mUsed++;
         }
       }
       const aR = Math.max(0, c.cap - aUsed), mR = Math.max(0, c.cap - mUsed);
@@ -122,7 +124,7 @@ function render() {
         <span><span class="label">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'滿':'剩 '+mR}</span></span>
       </div></div>`;
     });
-    html += `<div class="card"><div class="coach-t"><span>${c.name} 教練</span></div>${slotsHtml}</div>`;
+    html += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
   });
   document.getElementById('content').innerHTML = html + '</div>';
 }
