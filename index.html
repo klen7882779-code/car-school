@@ -10,7 +10,7 @@
   .controls { background:var(--c); padding:12px; border-bottom:1px solid var(--b); display:flex; justify-content:center; gap:8px; position:sticky; top:65px; z-index:90; }
   .pill { padding:6px 14px; border-radius:20px; border:1px solid var(--b); background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
   .pill.active { background:var(--p); color:#fff; border-color:var(--p); }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:15px; padding:15px; max-width:1100px; margin:auto; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px; padding:15px; max-width:1100px; margin:auto; }
   .card { background:var(--c); border:1px solid var(--b); border-radius:12px; padding:15px; border-top:5px solid var(--acc); }
   .coach-t { font-size:17px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; }
   .slot { background:#f9f9f9; padding:10px; border-radius:8px; margin-bottom:8px; }
@@ -19,14 +19,11 @@
   .rem { font-weight:bold; font-size:15px; }
   .rem-ok { color:#27ae60; }
   .rem-full { color:#c0392b; }
-  .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; vertical-align:middle; }
-  .loading { text-align:center; padding:50px; color:#999; }
+  .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; }
 </style>
 </head>
 <body>
-
 <div class="header"><h2 style="margin:0">🚗 第一汽車駕訓班 — 名額查詢</h2></div>
-
 <div class="controls">
   <button class="pill active" id="btnA" onclick="sw('cohort','A')">A 梯次</button>
   <button class="pill" id="btnB" onclick="sw('cohort','B')">B 梯次</button>
@@ -34,14 +31,11 @@
   <button class="pill active" id="btnWD" onclick="sw('day','WD')">平日</button>
   <button class="pill" id="btnWE" onclick="sw('day','WE')">假日</button>
 </div>
-
-<div id="content"><div class="loading">即時資料同步中...</div></div>
+<div id="content"></div>
 
 <script>
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
-
-// 只需要定義時段的關鍵字
 const WD_KEYS = ["06:00", "08:30", "10:00", "12:00", "13:30", "15:30", "18:30", "19:00"];
 const WE_KEYS = ["08:30–12:30", "13:30–17:30"];
 
@@ -52,6 +46,10 @@ async function fetchSheet(gid, tq) {
   const res = await fetch(url);
   const text = await res.text();
   return JSON.parse(text.substring(47, text.length - 2)).table.rows;
+}
+
+function isOccupied(val) {
+  return val && val !== "" && val !== "-" && val !== "—" && val !== "──" && val !== "0";
 }
 
 async function load() {
@@ -70,26 +68,11 @@ async function load() {
         const res = await fetch(url);
         const text = await res.text();
         const rows = JSON.parse(text.substring(47, text.length - 2)).table.rows;
-        // 清理資料：轉為純文字陣列
         allData[c.name] = rows.map(r => (r.c || []).map(cell => (cell?.f || cell?.v || '').toString().trim()));
       } catch (e) { console.error(c.name); }
     }));
     render();
-  } catch (e) { document.getElementById('content').innerHTML = '讀取失敗，請確認已發佈到網路。'; }
-}
-
-function sw(k, v) {
-  if (k === 'cohort') cohort = v; else dayType = v;
-  document.getElementById('btnA').className = 'pill' + (cohort === 'A' ? ' active' : '');
-  document.getElementById('btnB').className = 'pill' + (cohort === 'B' ? ' active' : '');
-  document.getElementById('btnWD').className = 'pill' + (dayType === 'WD' ? ' active' : '');
-  document.getElementById('btnWE').className = 'pill' + (dayType === 'WE' ? ' active' : '');
-  render();
-}
-
-function isOccupied(val) {
-  // 只要不是空的，且不是常見的橫線符號，就算有人
-  return val && val !== "" && val !== "-" && val !== "—" && val !== "──";
+  } catch (e) { console.error(e); }
 }
 
 function render() {
@@ -103,26 +86,20 @@ function render() {
 
     keys.forEach(k => {
       let aUsed = 0, mUsed = 0;
-      let foundTime = false;
-      let timeLabel = k;
+      let found = false, label = k;
 
-      // 關鍵邏輯：掃描整個表格，尋找匹配時段及其下方的空白列
       for (let i = 0; i < grid.length; i++) {
         const rowA = grid[i][0] || "";
-        
-        // 如果找到了目標時段，或正處於該時段的後續列（A欄為空）
-        if (rowA.includes(k)) {
-          foundTime = true;
-          timeLabel = rowA; // 使用完整的時段名稱 (如: 08:30–11:00 第一批)
-        } else if (foundTime && rowA !== "") {
-          // 如果碰到下一個有寫時間的列，代表這個時段結束了
-          break;
-        }
+        if (rowA.includes(k)) { found = true; label = rowA; }
+        else if (found && rowA !== "") { break; }
 
-        if (foundTime) {
+        if (found) {
+          // 平日掃描 5 天，假日掃描 2 天
           const days = dayType === 'WD' ? 5 : 2;
           for (let d = 0; d < days; d++) {
+            // 自排在 C, E, G, I, K (索引 2, 4, 6, 8, 10)
             if (isOccupied(grid[i][2 + (d * 2)])) aUsed++;
+            // 手排在 D, F, H, J, L (索引 3, 5, 7, 9, 11)
             if (isOccupied(grid[i][3 + (d * 2)])) mUsed++;
           }
         }
@@ -130,23 +107,18 @@ function render() {
 
       const aR = Math.max(0, c.cap - aUsed), mR = Math.max(0, c.cap - mUsed);
       slotsHtml += `<div class="slot">
-        <span class="slot-time">🕒 ${timeLabel}</span>
+        <span class="slot-time">🕒 ${label}</span>
         <div class="stat">
-          <span><span class="label">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'滿':'剩 '+aR}</span></span>
-          <span><span class="label">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'滿':'剩 '+mR}</span></span>
+          <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'滿':'剩 '+aR}</span></span>
+          <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'滿':'剩 '+mR}</span></span>
         </div>
       </div>`;
     });
-
-    html += `<div class="card"><div class="coach-t">👤 ${coachNameFormat(c.name)}</div>${slotsHtml}</div>`;
+    html += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
   });
   document.getElementById('content').innerHTML = html + '</div>';
 }
-
-function coachNameFormat(name) {
-    return name.length > 3 ? name : name.split('').join(' ');
-}
-
+function sw(k,v){ if(k==='cohort')cohort=v; else dayType=v; render(); }
 load();
 </script>
 </body>
