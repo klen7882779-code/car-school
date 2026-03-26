@@ -11,7 +11,7 @@
   .pill { padding:6px 14px; border-radius:20px; border:1px solid var(--b); background:#fff; cursor:pointer; font-size:12px; font-weight:600; }
   .pill.active { background:var(--p); color:#fff; border-color:var(--p); }
   .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:15px; padding:15px; max-width:1100px; margin:auto; }
-  .card { background:var(--c); border:1px solid var(--b); border-radius:12px; padding:15px; border-top:5px solid var(--acc); }
+  .card { background:var(--c); border:1px solid var(--b); border-radius:12px; padding:15px; border-top:5px solid var(--acc); box-shadow:0 2px 8px rgba(0,0,0,0.05); }
   .coach-t { font-size:17px; font-weight:bold; border-bottom:1px solid #eee; padding-bottom:8px; margin-bottom:12px; }
   .slot { background:#f9f9f9; padding:10px; border-radius:8px; margin-bottom:8px; }
   .slot-time { font-size:11px; font-weight:bold; color:#666; margin-bottom:6px; display:block; }
@@ -20,10 +20,13 @@
   .rem-ok { color:#27ae60; }
   .rem-full { color:#c0392b; }
   .label { font-size:10px; background:#666; color:#fff; padding:2px 5px; border-radius:3px; margin-right:5px; }
+  .loading { text-align:center; padding:50px; color:#999; }
 </style>
 </head>
 <body>
+
 <div class="header"><h2 style="margin:0">🚗 第一汽車駕訓班 — 名額查詢</h2></div>
+
 <div class="controls">
   <button class="pill active" id="btnA" onclick="sw('cohort','A')">A 梯次</button>
   <button class="pill" id="btnB" onclick="sw('cohort','B')">B 梯次</button>
@@ -31,103 +34,115 @@
   <button class="pill active" id="btnWD" onclick="sw('day','WD')">平日</button>
   <button class="pill" id="btnWE" onclick="sw('day','WE')">假日</button>
 </div>
-<div id="content"></div>
+
+<div id="content"><div class="loading">正在連線至雲端課表...</div></div>
 
 <script>
 const SHEET_ID = '1ZbOb5Ac8XEG0hoaNPs1wFdm5iWyi7XouBDZOP6Z6D7I';
 const CONFIG_GID = '1565459234';
 
-// --- 強制對齊 Excel 行數 (JavaScript 索引從 0 開始，所以 Excel 第 4 行 = 索引 3) ---
+// 絕對座標設定：對應 Excel 的行數 (JS 索引 = 行數 - 1)
 const WD_LAYOUT = [
-  { label: '06:00–08:30 早班', rows: [3, 4, 5, 6] },      // Excel 行 4,5,6,7
-  { label: '08:30–11:00 第一批', rows: [11, 12, 13, 14] }, // Excel 行 12,13,14,15
-  { label: '10:00–12:30 暑期A', rows: [19, 20] },         // Excel 行 20,21
-  { label: '12:00–14:30 第二批', rows: [23, 24, 25, 26] }, // Excel 行 24,25,26,27
-  { label: '13:30–16:00 暑期B', rows: [31, 32] },         // Excel 行 32,33
-  { label: '15:30–18:00 第三批', rows: [35, 36, 37, 38] }, // Excel 行 36,37,38,39
-  { label: '18:30–21:00 晚班', rows: [43, 44, 45, 46] },   // Excel 行 44,45,46,47
-  { label: '19:00–21:00 第四批', rows: [51, 52, 53, 54] }  // Excel 行 52,53,54,55
+  { label: '06:00–08:30 早班', rows: [3, 4, 5, 6] },
+  { label: '08:30–11:00 第一批', rows: [11, 12, 13, 14] },
+  { label: '10:00–12:30 暑期A', rows: [19, 20] },
+  { label: '12:00–14:30 第二批', rows: [23, 24, 25, 26] },
+  { label: '13:30–16:00 暑期B', rows: [31, 32] },
+  { label: '15:30–18:00 第三批', rows: [35, 36, 37, 38] },
+  { label: '18:30–21:00 晚班', rows: [43, 44, 45, 46] },
+  { label: '19:00–21:00 第四批', rows: [51, 52, 53, 54] }
 ];
 
 const WE_LAYOUT = [
-  { label: '08:30–12:30 假日上午', rows: [61, 62, 63, 64] }, // Excel 行 62,63,64,65
-  { label: '13:30–17:30 假日下午', rows: [69, 70, 71, 72] }  // Excel 行 70,71,72,73
+  { label: '08:30–12:30 假日上午', rows: [61, 62, 63, 64] },
+  { label: '13:30–17:30 假日下午', rows: [69, 70, 71, 72] }
 ];
 
 let coaches = [], allData = {}, cohort = 'A', dayType = 'WD';
 
-async function fetchJSON(gid, tq) {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&tq=${encodeURIComponent(tq)}&gid=${gid}`;
+async function fetchSheet(gid, sheetName, range) {
+  let url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
+  if (gid) url += `&gid=${gid}`;
+  if (sheetName) url += `&sheet=${encodeURIComponent(sheetName)}`;
+  if (range) url += `&range=${range}`;
   const res = await fetch(url);
   const text = await res.text();
   return JSON.parse(text.substring(47, text.length - 2)).table.rows;
-}
-
-async function load() {
-  try {
-    const cfgRows = await fetchJSON(CONFIG_GID, "select B, C, D, F");
-    coaches = cfgRows.map(r => ({
-      name: (r.c[0]?.v || '').toString().trim(),
-      cohort: (r.c[1]?.v || '').toString().includes('A') ? 'A' : 'B',
-      type: (r.c[2]?.v || 'WDWE').toString().toUpperCase(),
-      cap: parseInt(r.c[3]?.v) || 4
-    })).filter(c => c.name);
-
-    await Promise.all(coaches.map(async (c) => {
-      try {
-        const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(c.name)}&range=A1:L80`;
-        const res = await fetch(url);
-        const text = await res.text();
-        const rows = JSON.parse(text.substring(47, text.length - 2)).table.rows;
-        allData[c.name] = rows.map(r => (r.c || []).map(cell => (cell?.f || cell?.v || '').toString().trim()));
-      } catch (e) { console.error(c.name); }
-    }));
-    render();
-  } catch (e) { console.error(e); }
 }
 
 function isOccupied(val) {
   return val && val !== "" && val !== "-" && val !== "—" && val !== "──" && val !== "0";
 }
 
+async function load() {
+  try {
+    const cfgRows = await fetchSheet(CONFIG_GID, null, "B2:F100");
+    coaches = cfgRows.map(r => ({
+      name: (r.c[0]?.v || '').toString().trim(),
+      cohort: (r.c[1]?.v || '').toString().includes('A') ? 'A' : 'B',
+      type: (r.c[2]?.v || 'WDWE').toString().toUpperCase(),
+      cap: parseInt(r.c[4]?.v) || 4 // 改為讀取 F 欄 (索引 4)
+    })).filter(c => c.name !== "");
+
+    await Promise.all(coaches.map(async (c) => {
+      try {
+        const rows = await fetchSheet(null, c.name, "A1:L80");
+        allData[c.name] = rows.map(r => (r.c || []).map(cell => (cell?.f || cell?.v || '').toString().trim()));
+      } catch (e) { console.error("抓取失敗: " + c.name); }
+    }));
+    render();
+  } catch (e) { 
+    document.getElementById('content').innerHTML = '<div class="loading">❌ 連線失敗，請檢查網路或發布設定。</div>';
+  }
+}
+
 function render() {
   const layout = dayType === 'WD' ? WD_LAYOUT : WE_LAYOUT;
   const filtered = coaches.filter(c => c.cohort === cohort && c.type.includes(dayType));
-  let html = '<div class="grid">';
+  const container = document.getElementById('content');
+  container.innerHTML = '';
+  
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="loading">此梯次目前無教練資料。</div>';
+    return;
+  }
 
+  let html = '<div class="grid">';
   filtered.forEach(c => {
     const grid = allData[c.name] || [];
     let slotsHtml = '';
-
     layout.forEach(s => {
       let aUsed = 0, mUsed = 0;
-      
-      // 依照設定的 rows 索引直接抓取該時段的每一行
-      s.rows.forEach(rowIndex => {
-        const row = grid[rowIndex];
+      s.rows.forEach(idx => {
+        const row = grid[idx];
         if (row) {
           const days = dayType === 'WD' ? 5 : 2;
           for (let d = 0; d < days; d++) {
-            if (isOccupied(row[2 + (d * 2)])) aUsed++; // 自排 C,E,G,I,K
-            if (isOccupied(row[3 + (d * 2)])) mUsed++; // 手排 D,F,H,J,L
+            if (isOccupied(row[2 + (d * 2)])) aUsed++;
+            if (isOccupied(row[3 + (d * 2)])) mUsed++;
           }
         }
       });
-
       const aR = Math.max(0, c.cap - aUsed), mR = Math.max(0, c.cap - mUsed);
-      slotsHtml += `<div class="slot">
-        <span class="slot-time">🕒 ${s.label}</span>
-        <div class="stat">
-          <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'滿':'剩 '+aR}</span></span>
-          <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'滿':'剩 '+mR}</span></span>
-        </div>
-      </div>`;
+      slotsHtml += `<div class="slot"><span class="slot-time">🕒 ${s.label}</span><div class="stat">
+        <span><span class="label" style="background:#3498db">自</span><span class="rem ${aR===0?'rem-full':'rem-ok'}">${aR===0?'滿':'剩 '+aR}</span></span>
+        <span><span class="label" style="background:#e67e22">手</span><span class="rem ${mR===0?'rem-full':'rem-ok'}">${mR===0?'滿':'剩 '+mR}</span></span>
+      </div></div>`;
     });
     html += `<div class="card"><div class="coach-t">👤 ${c.name} 教練</div>${slotsHtml}</div>`;
   });
-  document.getElementById('content').innerHTML = html + '</div>';
+  container.innerHTML = html + '</div>';
 }
-function sw(k,v){ if(k==='cohort')cohort=v; else dayType=v; render(); }
+
+function sw(k,v){ 
+  if(k==='cohort') cohort=v; else dayType=v;
+  document.getElementById('btnA').className = 'pill' + (cohort==='A'?' active':'');
+  document.getElementById('btnB').className = 'pill' + (cohort==='B'?' active':'');
+  document.getElementById('btnWD').className = 'pill' + (dayType==='WD'?' active':'');
+  document.getElementById('btnWE').className = 'pill' + (dayType==='WE'?' active':'');
+  render();
+}
+
 load();
 </script>
 </body>
